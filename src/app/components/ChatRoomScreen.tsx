@@ -76,7 +76,7 @@ export function ChatRoomScreen({ onBack, questId, questItem }: ChatRoomScreenPro
       setMessages(msgs);
     });
     return () => unsubscribe();
-  }, [currentUser?.uid]);
+  }, [currentUser?.uid, CHAT_ID]);
 
   // 자동 스크롤
   useEffect(() => {
