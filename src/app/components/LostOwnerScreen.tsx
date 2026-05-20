@@ -1,4 +1,5 @@
 import { Camera, MapPin, Sparkles, CheckCircle2, Users, Percent, Navigation, Clock, MessageCircle, Coins } from "lucide-react";
+import { toast } from "sonner";
 import { useState, useRef } from "react";
 import { ChatRoomScreen } from "./ChatRoomScreen";
 import { useAppContext } from "../context/AppContext";
@@ -37,7 +38,7 @@ const SIMILAR_ITEMS = [
 ];
 
 export function LostOwnerScreen({ onSuccess }: { onSuccess?: () => void }) {
-  const { addQuest } = useAppContext();
+  const { addQuest, spendPoints, userPoints } = useAppContext();
   const { currentUser } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -49,6 +50,7 @@ export function LostOwnerScreen({ onSuccess }: { onSuccess?: () => void }) {
   const [urgentAlert, setUrgentAlert] = useState(false);
   const [pinToTop, setPinToTop] = useState(false);
   const [showChatRoom, setShowChatRoom] = useState(false);
+  const [chatItem, setChatItem] = useState<(typeof SIMILAR_ITEMS)[0] | null>(null);
   const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -59,10 +61,24 @@ export function LostOwnerScreen({ onSuccess }: { onSuccess?: () => void }) {
     setImagePreview(URL.createObjectURL(file));
   };
 
+  const optionCost = (pinToTop ? 5000 : 0) + (urgentAlert ? 3000 : 0);
+
   const handleSubmit = async () => {
     if (!itemName || !location) {
-      alert("물건 이름과 장소를 입력해주세요.");
+      toast.error("물건 이름과 장소를 입력해주세요.");
       return;
+    }
+    if (optionCost > 0) {
+      if (userPoints < optionCost) {
+        toast.error(`포인트가 부족합니다. (필요: ${optionCost.toLocaleString()} P, 보유: ${userPoints.toLocaleString()} P)`);
+        return;
+      }
+      const uid = currentUser?.uid ?? "";
+      const ok = await spendPoints(uid, optionCost);
+      if (!ok) {
+        toast.error("포인트 차감에 실패했습니다. 다시 시도해주세요.");
+        return;
+      }
     }
     setSubmitting(true);
     try {
@@ -89,10 +105,10 @@ export function LostOwnerScreen({ onSuccess }: { onSuccess?: () => void }) {
         category: "기타",
         uid: currentUser?.uid,
       });
-      alert("분실물이 등록되었습니다! 🎉");
+      toast.success("분실물이 등록되었습니다! 🎉");
       if (onSuccess) onSuccess();
     } catch (e) {
-      alert("등록에 실패했습니다. 다시 시도해주세요.");
+      toast.error("등록에 실패했습니다. 다시 시도해주세요.");
       console.error(e);
     } finally {
       setSubmitting(false);
@@ -103,8 +119,20 @@ export function LostOwnerScreen({ onSuccess }: { onSuccess?: () => void }) {
     setImagePreview("https://images.unsplash.com/photo-1629958513881-a086d21383cd?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080");
   };
 
-  if (showChatRoom) {
-    return <ChatRoomScreen onBack={() => setShowChatRoom(false)} />;
+  if (showChatRoom && chatItem) {
+    return (
+      <ChatRoomScreen
+        onBack={() => { setShowChatRoom(false); setChatItem(null); }}
+        questId={`found-${chatItem.id}`}
+        questItem={{
+          image: chatItem.image,
+          title: chatItem.name,
+          location: chatItem.location,
+          reward: "20,000",
+          distance: "근처",
+        }}
+      />
+    );
   }
 
   return (
@@ -262,10 +290,11 @@ export function LostOwnerScreen({ onSuccess }: { onSuccess?: () => void }) {
           {/* Submit Button */}
           <button
             onClick={handleSubmit}
+            disabled={submitting}
             className="w-full mt-6 px-4 py-3.5 rounded-xl text-[15px]"
-            style={{ background: "linear-gradient(135deg, #10B981, #059669)", color: "#ffffff", fontWeight: 800, boxShadow: "0 4px 14px rgba(16,185,129,0.3)" }}
+            style={{ background: submitting ? "#9CA3AF" : "linear-gradient(135deg, #10B981, #059669)", color: "#ffffff", fontWeight: 800, boxShadow: submitting ? "none" : "0 4px 14px rgba(16,185,129,0.3)" }}
           >
-            분실물 등록하기
+            {submitting ? "등록 중..." : `분실물 등록하기${optionCost > 0 ? ` (-${optionCost.toLocaleString()} P)` : ""}`}
           </button>
         </div>
       </div>
@@ -337,7 +366,7 @@ export function LostOwnerScreen({ onSuccess }: { onSuccess?: () => void }) {
                 {isSelected && (
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     <button
-                      onClick={() => setShowChatRoom(true)}
+                      onClick={() => { setChatItem(item); setShowChatRoom(true); }}
                       className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-[13px]"
                       style={{ background: "rgba(124,58,237,0.08)", color: "#7C3AED", fontWeight: 700, border: "1px solid rgba(124,58,237,0.25)" }}
                     >
@@ -346,6 +375,7 @@ export function LostOwnerScreen({ onSuccess }: { onSuccess?: () => void }) {
                     </button>
 
                     <button
+                      onClick={() => window.open(`https://map.kakao.com/link/search/${encodeURIComponent(item.location)}`, "_blank")}
                       className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-[13px]"
                       style={{ background: "linear-gradient(135deg, #F59E0B, #D97706)", color: "#1a1200", fontWeight: 800 }}
                     >
@@ -400,6 +430,7 @@ export function LostOwnerScreen({ onSuccess }: { onSuccess?: () => void }) {
             </div>
 
             <button
+              onClick={() => window.open(`https://map.kakao.com/link/search/${encodeURIComponent("안양시청 1층 민원실")}`, "_blank")}
               className="w-full mt-3 px-4 py-3 rounded-lg text-[13px] flex items-center justify-center gap-2"
               style={{ background: "rgba(124,58,237,0.08)", color: "#7C3AED", fontWeight: 700, border: "1px solid rgba(124,58,237,0.25)" }}
             >

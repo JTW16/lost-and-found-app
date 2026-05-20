@@ -8,6 +8,7 @@ import { ProfileScreen } from "./components/ProfileScreen";
 import { NotificationScreen } from "./components/NotificationScreen";
 import { SearchScreen } from "./components/SearchScreen";
 import { PointStoreScreen } from "./components/PointStoreScreen";
+import { ChatRoomScreen } from "./components/ChatRoomScreen";
 import { useAuth } from "./context/AuthContext";
 import { AuthScreen } from "./screens/AuthScreen";
 import { useAppContext, Quest } from "./context/AppContext";
@@ -35,7 +36,7 @@ function TimerBadge({ time }: { time: string }) {
 
 // ─── Premium Quest Card ───────────────────────────────────────────────────────
 
-function PremiumQuestCard({ quest }: { quest: Quest }) {
+function PremiumQuestCard({ quest, onAccept }: { quest: Quest; onAccept: () => void }) {
   return (
     <div
       className="mx-4 rounded-2xl overflow-hidden relative"
@@ -94,7 +95,8 @@ function PremiumQuestCard({ quest }: { quest: Quest }) {
             <span className="text-[12px]" style={{ color: "#10B981", fontWeight: 600 }}>{quest.distance}</span>
           </div>
           <button
-            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[12px]"
+            onClick={onAccept}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[12px] active:opacity-70 transition-opacity"
             style={{ background: "linear-gradient(135deg, #F59E0B, #D97706)", color: "#1a1200", fontWeight: 800 }}
           >
             수락하기 <ChevronRight size={13} />
@@ -107,9 +109,10 @@ function PremiumQuestCard({ quest }: { quest: Quest }) {
 
 // ─── Regular Quest Row ────────────────────────────────────────────────────────
 
-function RegularQuestRow({ quest }: { quest: Quest }) {
+function RegularQuestRow({ quest, onClick }: { quest: Quest; onClick: () => void }) {
   return (
     <button
+      onClick={onClick}
       className="w-full flex items-center gap-3 px-4 py-3 active:opacity-70 transition-opacity text-left"
       style={{ borderBottom: "1px solid rgba(0,0,0,0.06)" }}
     >
@@ -156,7 +159,15 @@ function RegularQuestRow({ quest }: { quest: Quest }) {
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
-type Screen = "home" | "lost-owner" | "finder" | "good-samaritan" | "map" | "profile" | "notification" | "search" | "point-store";
+type Screen = "home" | "lost-owner" | "finder" | "good-samaritan" | "map" | "profile" | "notification" | "search" | "point-store" | "chat";
+
+/** 화면 전환 시 activeNav도 함께 동기화하는 헬퍼 */
+const NAV_MAP: Partial<Record<Screen, string>> = {
+  home: "home",
+  map: "map",
+  chat: "chat",
+  profile: "profile",
+};
 
 export default function App() {
   const { currentUser, userProfile, loading } = useAuth();
@@ -166,12 +177,20 @@ export default function App() {
   const [showActionMenu, setShowActionMenu] = useState(false);
   const { quests, premiumQuest, userPoints, setUserPoints } = useAppContext();
 
+  /** 화면 전환 + 탭 하이라이트 동기화 */
+  const navigate = (screen: Screen) => {
+    setCurrentScreen(screen);
+    const nav = NAV_MAP[screen];
+    if (nav) setActiveNav(nav);
+  };
+
   // 로그인한 유저의 포인트를 Firestore에서 동기화
   useEffect(() => {
     if (userProfile) {
       setUserPoints(userProfile.points);
     }
   }, [userProfile]);
+
 
   // 로딩 중
   if (loading) {
@@ -233,7 +252,7 @@ export default function App() {
 
         {/* ── Top App Bar ── */}
         <div className="flex items-center justify-between px-5 pt-1 pb-3 flex-shrink-0">
-          <button onClick={() => setCurrentScreen("home")} className="flex items-center gap-2">
+          <button onClick={() => navigate("home")} className="flex items-center gap-2">
             <div
               className="w-8 h-8 rounded-xl flex items-center justify-center"
               style={{ background: "linear-gradient(135deg, #F59E0B, #D97706)", boxShadow: "0 4px 14px rgba(245,158,11,0.35)" }}
@@ -250,14 +269,14 @@ export default function App() {
           </button>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setCurrentScreen("search")}
+              onClick={() => navigate("search")}
               className="w-9 h-9 rounded-xl flex items-center justify-center"
               style={{ background: "#F3F4F6", border: "1px solid rgba(0,0,0,0.07)" }}
             >
               <Search size={16} style={{ color: "#6B7280" }} />
             </button>
             <button
-              onClick={() => setCurrentScreen("notification")}
+              onClick={() => navigate("notification")}
               className="w-9 h-9 rounded-xl flex items-center justify-center relative"
               style={{ background: "#F3F4F6", border: "1px solid rgba(0,0,0,0.07)" }}
             >
@@ -313,13 +332,13 @@ export default function App() {
                 <div className="w-1 h-4 rounded-full" style={{ background: "linear-gradient(180deg, #F59E0B, #D97706)" }} />
                 <span className="text-[13px]" style={{ fontWeight: 700, color: "#111827" }}>긴급 퀘스트 보드</span>
               </div>
-              <button className="text-[11px]" style={{ color: "#7C3AED", fontWeight: 600 }}>전체보기 →</button>
+              <button onClick={() => navigate("finder")} className="text-[11px] active:opacity-70" style={{ color: "#7C3AED", fontWeight: 600 }}>전체보기 →</button>
             </div>
 
             {/* ── Feed ── */}
             <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
               {/* Premium Card */}
-              {premiumQuest && <PremiumQuestCard quest={premiumQuest} />}
+              {premiumQuest && <PremiumQuestCard quest={premiumQuest} onAccept={() => navigate("finder")} />}
 
               {/* Divider */}
               <div className="flex items-center gap-3 px-4 my-4">
@@ -333,7 +352,7 @@ export default function App() {
               {/* Regular rows container */}
               <div className="mx-4 rounded-2xl overflow-hidden" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.08)", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
                 {quests.map((quest) => (
-                  <RegularQuestRow key={quest.id} quest={quest} />
+                  <RegularQuestRow key={quest.id} quest={quest} onClick={() => navigate("finder")} />
                 ))}
               </div>
 
@@ -345,13 +364,13 @@ export default function App() {
 
         {currentScreen === "lost-owner" && (
           <div className="flex-1 overflow-hidden">
-            <LostOwnerScreen onSuccess={() => setCurrentScreen("home")} />
+            <LostOwnerScreen onSuccess={() => navigate("home")} />
           </div>
         )}
 
         {currentScreen === "finder" && (
           <div className="flex-1 overflow-hidden">
-            <FinderScreen onNavigateToPointStore={() => setCurrentScreen("point-store")} />
+            <FinderScreen onNavigateToPointStore={() => navigate("point-store")} />
           </div>
         )}
 
@@ -363,7 +382,7 @@ export default function App() {
 
         {currentScreen === "map" && (
           <div className="flex-1 overflow-hidden">
-            <MapScreen />
+            <MapScreen onNavigateToFinder={() => navigate("finder")} />
           </div>
         )}
 
@@ -375,19 +394,29 @@ export default function App() {
 
         {currentScreen === "notification" && (
           <div className="flex-1 overflow-hidden">
-            <NotificationScreen onClose={() => setCurrentScreen("home")} />
+            <NotificationScreen onClose={() => navigate("home")} />
           </div>
         )}
 
         {currentScreen === "search" && (
           <div className="flex-1 overflow-hidden">
-            <SearchScreen onClose={() => setCurrentScreen("home")} />
+            <SearchScreen onClose={() => navigate("home")} />
           </div>
         )}
 
         {currentScreen === "point-store" && (
           <div className="flex-1 overflow-hidden">
-            <PointStoreScreen onBack={() => setCurrentScreen("finder")} />
+            <PointStoreScreen onBack={() => navigate("finder")} />
+          </div>
+        )}
+
+        {currentScreen === "chat" && (
+          <div className="flex-1 overflow-hidden">
+            <ChatRoomScreen
+              onBack={() => navigate("home")}
+              questId="quest-global"
+              questItem={undefined}
+            />
           </div>
         )}
 
@@ -442,7 +471,7 @@ export default function App() {
                 <div className="space-y-3 mb-6">
                   <button
                     onClick={() => {
-                      setCurrentScreen("lost-owner");
+                      navigate("lost-owner");
                       setShowActionMenu(false);
                     }}
                     className="w-full rounded-2xl p-4 flex items-center gap-4 text-left"
@@ -462,7 +491,7 @@ export default function App() {
 
                   <button
                     onClick={() => {
-                      setCurrentScreen("finder");
+                      navigate("finder");
                       setShowActionMenu(false);
                     }}
                     className="w-full rounded-2xl p-4 flex items-center gap-4 text-left"
@@ -482,7 +511,7 @@ export default function App() {
 
                   <button
                     onClick={() => {
-                      setCurrentScreen("good-samaritan");
+                      navigate("good-samaritan");
                       setShowActionMenu(false);
                     }}
                     className="w-full rounded-2xl p-4 flex items-center gap-4 text-left"
@@ -526,16 +555,7 @@ export default function App() {
             return (
               <button
                 key={id}
-                onClick={() => {
-                  setActiveNav(id);
-                  if (id === "home") {
-                    setCurrentScreen("home");
-                  } else if (id === "map") {
-                    setCurrentScreen("map");
-                  } else if (id === "profile") {
-                    setCurrentScreen("profile");
-                  }
-                }}
+                onClick={() => navigate(id as Screen)}
                 className="flex flex-col items-center gap-1 w-16 pt-2 active:opacity-70 transition-opacity"
               >
                 <div className="relative">

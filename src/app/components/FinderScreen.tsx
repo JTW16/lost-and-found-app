@@ -1,64 +1,50 @@
 import { ChevronDown, Search, MessageCircle, Flag, Coins, ShoppingBag, MapPin, Clock, Zap } from "lucide-react";
 import { useState } from "react";
 import { ChatRoomScreen } from "./ChatRoomScreen";
-
-const QUEST_ITEMS = [
-  {
-    id: 1,
-    image: "https://images.unsplash.com/photo-1524226750215-b424f7377a80?w=400",
-    title: "맥북 프로 16인치 실버",
-    location: "안양역 2번 출구 인근",
-    reward: "100,000",
-    timeLeft: "2시간 14분",
-    urgent: true,
-    distance: "300m",
-  },
-  {
-    id: 2,
-    image: "https://images.unsplash.com/photo-1629958513881-a086d21383cd?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwyfHxibGFjayUyMGxlYXRoZXIlMjB3YWxsZXR8ZW58MXx8fHwxNzc1ODg3ODQ3fDA&ixlib=rb-4.1.0&q=80&w=1080",
-    title: "검은색 가죽 지갑",
-    location: "범계역 3번 출구",
-    reward: "20,000",
-    timeLeft: "5시간 32분",
-    urgent: false,
-    distance: "650m",
-  },
-  {
-    id: 3,
-    image: "https://images.unsplash.com/photo-1768081529866-a5ec754fe14c?w=400",
-    title: "소니 FE 24-70mm 렌즈",
-    location: "인덕원역 근처 카페",
-    reward: "50,000",
-    timeLeft: "1시간 45분",
-    urgent: true,
-    distance: "2.1km",
-  },
-  {
-    id: 4,
-    image: "https://images.unsplash.com/photo-1646848842285-d4c14f43781e?w=400",
-    title: "에어팟 프로 2세대",
-    location: "평촌중앙공원 벤치",
-    reward: "30,000",
-    timeLeft: "4시간 20분",
-    urgent: false,
-    distance: "1.2km",
-  },
-];
+import { useAppContext } from "../context/AppContext";
 
 interface FinderScreenProps {
   onNavigateToPointStore?: () => void;
 }
 
 export function FinderScreen({ onNavigateToPointStore }: FinderScreenProps = {}) {
+  const { quests, premiumQuest, userPoints } = useAppContext();
   const [selectedRegion, setSelectedRegion] = useState("안양역");
-  const [selectedQuest, setSelectedQuest] = useState<number | null>(null);
+  const [selectedQuestId, setSelectedQuestId] = useState<string | null>(null);
   const [showRegionDropdown, setShowRegionDropdown] = useState(false);
-  const [showChatRoom, setShowChatRoom] = useState(false);
+  const [chatQuestId, setChatQuestId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const regions = ["안양역", "범계역", "인덕원역", "평촌역", "관악산역"];
 
-  if (showChatRoom) {
-    return <ChatRoomScreen onBack={() => setShowChatRoom(false)} />;
+  // 프리미엄 포함 전체 퀘스트 목록
+  const allQuests = [
+    ...(premiumQuest ? [premiumQuest] : []),
+    ...quests,
+  ];
+
+  // 검색 필터 적용
+  const filteredQuests = allQuests.filter((q) =>
+    searchQuery.trim() === "" ||
+    q.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    q.location.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  if (chatQuestId !== null) {
+    const questItem = allQuests.find((q) => q.id === chatQuestId);
+    return (
+      <ChatRoomScreen
+        onBack={() => setChatQuestId(null)}
+        questId={`quest-${chatQuestId}`}
+        questItem={questItem ? {
+          image: questItem.image,
+          title: questItem.title,
+          location: questItem.location,
+          reward: questItem.reward,
+          distance: questItem.distance,
+        } : undefined}
+      />
+    );
   }
 
   return (
@@ -79,7 +65,7 @@ export function FinderScreen({ onNavigateToPointStore }: FinderScreenProps = {})
             <div className="flex items-center gap-1.5 mb-1">
               <Coins size={18} style={{ color: "#F59E0B" }} />
               <span className="text-[20px]" style={{ color: "#F59E0B", fontWeight: 900, letterSpacing: "-0.5px" }}>
-                12,500
+                {userPoints.toLocaleString()}
               </span>
             </div>
             <button
@@ -136,6 +122,8 @@ export function FinderScreen({ onNavigateToPointStore }: FinderScreenProps = {})
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#9CA3AF" }} />
           <input
             type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="물건 이름 검색..."
             className="w-full pl-10 pr-4 py-3 rounded-xl text-[14px] placeholder-gray-400"
             style={{ background: "#F3F4F6", border: "1px solid rgba(0,0,0,0.08)", outline: "none", color: "#111827" }}
@@ -145,21 +133,30 @@ export function FinderScreen({ onNavigateToPointStore }: FinderScreenProps = {})
 
       {/* Quest Cards */}
       <div className="px-4 space-y-3 pb-6">
-        {QUEST_ITEMS.map((quest) => {
-          const isSelected = selectedQuest === quest.id;
+        {filteredQuests.length === 0 && (
+          <div className="py-12 flex flex-col items-center gap-2">
+            <span className="text-[32px]">🔍</span>
+            <p className="text-[13px]" style={{ color: "#9CA3AF" }}>
+              {searchQuery ? "검색 결과가 없습니다" : "등록된 퀘스트가 없습니다"}
+            </p>
+          </div>
+        )}
+        {filteredQuests.map((quest) => {
+          const isSelected = selectedQuestId === quest.id;
+          const isUrgent = !!quest.isPremium || !!quest.timeLeft;
 
           return (
             <div key={quest.id}>
               <div
-                onClick={() => setSelectedQuest(isSelected ? null : quest.id)}
+                onClick={() => setSelectedQuestId(isSelected ? null : quest.id)}
                 className="rounded-2xl overflow-hidden cursor-pointer transition-all"
                 style={{
                   background: "#ffffff",
-                  border: quest.urgent ? "1.5px solid rgba(245,158,11,0.5)" : "1px solid rgba(0,0,0,0.08)",
-                  boxShadow: quest.urgent ? "0 4px 20px rgba(245,158,11,0.1)" : "0 2px 8px rgba(0,0,0,0.05)",
+                  border: isUrgent ? "1.5px solid rgba(245,158,11,0.5)" : "1px solid rgba(0,0,0,0.08)",
+                  boxShadow: isUrgent ? "0 4px 20px rgba(245,158,11,0.1)" : "0 2px 8px rgba(0,0,0,0.05)",
                 }}
               >
-                {quest.urgent && (
+                {isUrgent && (
                   <div className="h-[2px]" style={{ background: "linear-gradient(90deg, transparent, #F59E0B, #D97706, transparent)" }} />
                 )}
 
@@ -171,16 +168,18 @@ export function FinderScreen({ onNavigateToPointStore }: FinderScreenProps = {})
                   />
 
                   {/* Time Badge */}
-                  <div className="absolute top-3 left-3">
-                    <div className="flex items-center gap-1 px-2 py-1 rounded-md" style={{ background: "rgba(255,255,255,0.92)", border: "1px solid rgba(0,0,0,0.12)", backdropFilter: "blur(4px)" }}>
-                      <Clock size={12} style={{ color: quest.urgent ? "#EF4444" : "#9CA3AF" }} />
-                      <span className="text-[11px]" style={{ color: quest.urgent ? "#EF4444" : "#6B7280", fontWeight: 700 }}>
-                        {quest.timeLeft}
-                      </span>
+                  {quest.timeLeft && (
+                    <div className="absolute top-3 left-3">
+                      <div className="flex items-center gap-1 px-2 py-1 rounded-md" style={{ background: "rgba(255,255,255,0.92)", border: "1px solid rgba(0,0,0,0.12)", backdropFilter: "blur(4px)" }}>
+                        <Clock size={12} style={{ color: isUrgent ? "#EF4444" : "#9CA3AF" }} />
+                        <span className="text-[11px]" style={{ color: isUrgent ? "#EF4444" : "#6B7280", fontWeight: 700 }}>
+                          {quest.timeLeft}
+                        </span>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
-                  {quest.urgent && (
+                  {isUrgent && (
                     <div className="absolute top-3 right-3">
                       <div className="flex items-center gap-1 px-2 py-1 rounded-md" style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.4)", backdropFilter: "blur(4px)" }}>
                         <Zap size={11} style={{ color: "#EF4444" }} />
@@ -192,7 +191,7 @@ export function FinderScreen({ onNavigateToPointStore }: FinderScreenProps = {})
                   {/* Reward Overlay */}
                   <div className="absolute bottom-0 left-0 right-0 px-4 py-2">
                     <span className="text-[20px]" style={{ fontWeight: 900, color: "#F59E0B", textShadow: "0 0 16px rgba(245,158,11,0.5)" }}>
-                      💰 {quest.reward} P
+                      💰 {quest.reward} KRW
                     </span>
                   </div>
                 </div>
@@ -215,7 +214,7 @@ export function FinderScreen({ onNavigateToPointStore }: FinderScreenProps = {})
               {isSelected && (
                 <div className="mt-2 grid grid-cols-2 gap-2 px-2">
                   <button
-                    onClick={() => setShowChatRoom(true)}
+                    onClick={() => setChatQuestId(quest.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-[13px]"
                     style={{ background: "rgba(124,58,237,0.08)", color: "#7C3AED", fontWeight: 700, border: "1px solid rgba(124,58,237,0.25)" }}
                   >

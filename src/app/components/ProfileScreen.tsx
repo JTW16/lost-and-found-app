@@ -1,4 +1,5 @@
-import { User, Award, Coins, TrendingUp, Settings, LogOut, ChevronRight, Shield, Star, Target, Crown, Gift } from "lucide-react";
+import { User, Award, Coins, TrendingUp, Settings, LogOut, ChevronRight, Shield, Star, Target, Crown } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "../context/AuthContext";
 import { useAppContext } from "../context/AppContext";
 
@@ -38,10 +39,18 @@ export function ProfileScreen() {
   const photoURL = userProfile?.photoURL ?? currentUser?.photoURL ?? "";
   const email = userProfile?.email ?? currentUser?.email ?? "";
 
-  const handleLogout = async () => {
-    if (window.confirm("로그아웃 하시겠습니까?")) {
-      await logout();
-    }
+  const handleLogout = () => {
+    toast("로그아웃 하시겠습니까?", {
+      action: {
+        label: "로그아웃",
+        onClick: () => logout(),
+      },
+      cancel: {
+        label: "취소",
+        onClick: () => {},
+      },
+      duration: 5000,
+    });
   };
 
   return (
@@ -106,6 +115,7 @@ export function ProfileScreen() {
           </div>
 
           <button
+            onClick={() => toast.info("준비 중입니다 🚀", { description: "설정 기능은 곧 출시됩니다!" })}
             className="w-10 h-10 rounded-xl flex items-center justify-center"
             style={{ background: "#F3F4F6", border: "1px solid rgba(0,0,0,0.08)" }}
           >
@@ -247,6 +257,7 @@ export function ProfileScreen() {
           ].map((item, index) => (
             <button
               key={index}
+              onClick={() => toast.info("준비 중입니다 🚀", { description: `${item.label} 기능은 곧 출시됩니다!` })}
               className="w-full px-4 py-3.5 flex items-center justify-between text-left"
               style={{ borderBottom: index < 3 ? "1px solid rgba(0,0,0,0.05)" : "none" }}
             >

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, ReactNode } from
 import { User, onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { auth, db, googleProvider } from "../../firebase";
+import { toast } from "sonner";
 
 interface AuthContextType {
   currentUser: User | null;
@@ -50,7 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("구글 로그인 실패:", error);
-      alert("로그인에 실패했습니다. 잠시 후 다시 시도해주세요.");
+      toast.error("로그인에 실패했습니다. 잠시 후 다시 시도해주세요.");
     }
   };
 

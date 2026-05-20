@@ -1,4 +1,5 @@
 import { Search, X, TrendingUp, Clock, MapPin, Coins } from "lucide-react";
+import { toast } from "sonner";
 import { useState } from "react";
 
 const TRENDING_SEARCHES = [
@@ -276,7 +277,14 @@ export function SearchScreen({ onClose }: SearchScreenProps) {
               {SEARCH_RESULTS.map((result) => (
                 <div
                   key={result.id}
-                  className="rounded-xl overflow-hidden"
+                  onClick={() => {
+                    if (result.type === "quest") {
+                      toast.success(`"${result.title}" 퀘스트`, { description: `${result.location} • ${result.distance}` });
+                    } else {
+                      toast.info(`${result.title}`, { description: result.location });
+                    }
+                  }}
+                  className="rounded-xl overflow-hidden cursor-pointer"
                   style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.08)", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}
                 >
                   {result.type === "quest" && result.image ? (

@@ -4,12 +4,8 @@ import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from 
 import { db } from "../../firebase";
 import { useAuth } from "../context/AuthContext";
 
-// 채팅방 ID (추후 동적으로 변경 가능)
-const CHAT_ID = "quest-wallet-1";
-
-// 샘플 분실물 데이터
-const LOST_ITEM = {
-  id: 2,
+// 샘플 분실물 데이터 (questItem prop이 없을 때 fallback)
+const FALLBACK_ITEM = {
   image: "https://images.unsplash.com/photo-1629958513881-a086d21383cd?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwyfHxibGFjayUyMGxlYXRoZXIlMjB3YWxsZXR8ZW58MXx8fHwxNzc1ODg3ODQ3fDA&ixlib=rb-4.1.0&q=80&w=1080",
   title: "검은색 가죽 지갑",
   location: "범계역 3번 출구",
@@ -26,18 +22,36 @@ type Message = {
   uid?: string;
 };
 
-interface ChatRoomScreenProps {
-  onBack: () => void;
+interface QuestItem {
+  image: string;
+  title: string;
+  location: string;
+  reward: string;
+  distance: string;
 }
 
-export function ChatRoomScreen({ onBack }: ChatRoomScreenProps) {
+interface ChatRoomScreenProps {
+  onBack: () => void;
+  /** 퀘스트별 채팅방 ID (Firestore document ID). 없으면 공용 fallback 사용 */
+  questId?: string;
+  /** 채팅방 상단에 표시할 분실물 정보 */
+  questItem?: QuestItem;
+}
+
+export function ChatRoomScreen({ onBack, questId, questItem }: ChatRoomScreenProps) {
+  const CHAT_ID = questId ?? "quest-global";
+  const LOST_ITEM = questItem ?? FALLBACK_ITEM;
   const { currentUser, userProfile } = useAuth();
   const myName = userProfile?.displayName ?? currentUser?.displayName ?? "나";
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [showItemInfo, setShowItemInfo] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [participantCount] = useState(3);
+  // 메시지를 보낸 고유 uid 수로 참여자 수 근사
+  const participantCount = Math.max(
+    new Set(messages.filter((m) => m.uid).map((m) => m.uid)).size,
+    messages.length > 0 ? 1 : 0
+  );
   const [isTyping, setIsTyping] = useState(false);
   const [sending, setSending] = useState(false);
 

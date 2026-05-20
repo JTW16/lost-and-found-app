@@ -35,7 +35,11 @@ const FILTER_OPTIONS = [
 // 안양 지역 기본 좌표
 const DEFAULT_CENTER = { lat: 37.3943, lng: 126.9568 };
 
-export function MapScreen() {
+interface MapScreenProps {
+  onNavigateToFinder?: () => void;
+}
+
+export function MapScreen({ onNavigateToFinder }: MapScreenProps = {}) {
   const { quests } = useAppContext();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const kakaoMapRef = useRef<KakaoMap | null>(null);
@@ -44,6 +48,11 @@ export function MapScreen() {
   const [showLayerMenu, setShowLayerMenu] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState(false);
+  const [layers, setLayers] = useState({ quests: true, storage: false, traffic: false });
+
+  const toggleLayer = (key: keyof typeof layers) => {
+    setLayers((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   // ── 카카오맵 SDK 로드 ──
   useEffect(() => {
@@ -296,7 +305,8 @@ export function MapScreen() {
                   </span>
                 </div>
                 <button
-                  className="px-4 py-2 rounded-lg text-[13px]"
+                  onClick={() => onNavigateToFinder?.()}
+                  className="px-4 py-2 rounded-lg text-[13px] active:opacity-70 transition-opacity"
                   style={{ background: "linear-gradient(135deg, #F59E0B, #D97706)", color: "#1a1200", fontWeight: 800 }}
                 >
                   퀘스트 수락
@@ -311,20 +321,40 @@ export function MapScreen() {
       {showLayerMenu && (
         <div className="absolute top-24 right-4 z-40">
           <div className="rounded-xl overflow-hidden" style={{ background: "rgba(255,255,255,0.97)", backdropFilter: "blur(20px)", border: "1px solid rgba(0,0,0,0.1)", boxShadow: "0 8px 32px rgba(0,0,0,0.12)" }}>
-            {[
-              { id: "quests", label: "퀘스트 마커", enabled: true },
-              { id: "storage", label: "보관소", enabled: false },
-              { id: "traffic", label: "교통 정보", enabled: false },
-            ].map((layer) => (
-              <button key={layer.id} className="w-full px-4 py-3 text-left text-[13px] flex items-center justify-between" style={{ borderBottom: "1px solid rgba(0,0,0,0.05)" }}>
-                <span style={{ color: layer.enabled ? "#111827" : "#9CA3AF", fontWeight: layer.enabled ? 600 : 400 }}>
-                  {layer.label}
-                </span>
-                <div className="w-9 h-5 rounded-full flex items-center px-0.5" style={{ background: layer.enabled ? "#F59E0B" : "#E5E7EB" }}>
-                  <div className="w-4 h-4 rounded-full" style={{ background: "white", transform: layer.enabled ? "translateX(16px)" : "translateX(0)", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
-                </div>
-              </button>
-            ))}
+            {(
+              [
+                { key: "quests" as const, label: "퀘스트 마커" },
+                { key: "storage" as const, label: "보관소" },
+                { key: "traffic" as const, label: "교통 정보" },
+              ] as const
+            ).map((layer, idx, arr) => {
+              const enabled = layers[layer.key];
+              return (
+                <button
+                  key={layer.key}
+                  onClick={() => toggleLayer(layer.key)}
+                  className="w-full px-4 py-3 text-left text-[13px] flex items-center justify-between"
+                  style={{ borderBottom: idx < arr.length - 1 ? "1px solid rgba(0,0,0,0.05)" : "none" }}
+                >
+                  <span style={{ color: enabled ? "#111827" : "#9CA3AF", fontWeight: enabled ? 600 : 400 }}>
+                    {layer.label}
+                  </span>
+                  <div
+                    className="w-9 h-5 rounded-full flex items-center px-0.5 transition-colors duration-200"
+                    style={{ background: enabled ? "#F59E0B" : "#E5E7EB" }}
+                  >
+                    <div
+                      className="w-4 h-4 rounded-full transition-transform duration-200"
+                      style={{
+                        background: "white",
+                        transform: enabled ? "translateX(16px)" : "translateX(0)",
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                      }}
+                    />
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

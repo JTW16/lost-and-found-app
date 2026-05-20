@@ -1,6 +1,7 @@
 import { Camera, MapPin, Clock, Store, Navigation, QrCode, Gift, CheckCircle2, ChevronRight } from "lucide-react";
+import { toast } from "sonner";
 import { useState, useRef } from "react";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, updateDoc, increment } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "../../firebase";
 import { useAuth } from "../context/AuthContext";
@@ -54,6 +55,7 @@ export function GoodSamaritanScreen() {
   const [qrGenerated, setQrGenerated] = useState(false);
   const [pointsEarned, setPointsEarned] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [selectedStorageId, setSelectedStorageId] = useState<number | null>(null);
 
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -64,7 +66,7 @@ export function GoodSamaritanScreen() {
 
   const handleGenerateQR = async () => {
     if (!location) {
-      alert("습득 장소를 입력해주세요.");
+      toast.error("습득 장소를 입력해주세요.");
       return;
     }
     setSubmitting(true);
@@ -89,14 +91,23 @@ export function GoodSamaritanScreen() {
         createdAt: serverTimestamp(),
       });
 
-      // 포인트 지급
+      // 포인트 지급 — 로컬 상태 즉시 반영 + Firestore 동기화
       const earned = 5000;
       setUserPoints(userPoints + earned);
+      if (currentUser) {
+        try {
+          await updateDoc(doc(db, "users", currentUser.uid), {
+            points: increment(earned),
+          });
+        } catch (e) {
+          console.error("포인트 Firestore 업데이트 실패:", e);
+        }
+      }
 
       setQrGenerated(true);
       setTimeout(() => setPointsEarned(true), 1500);
     } catch (e) {
-      alert("등록에 실패했습니다.");
+      toast.error("등록에 실패했습니다. 다시 시도해주세요.");
       console.error(e);
     } finally {
       setSubmitting(false);
@@ -255,50 +266,76 @@ export function GoodSamaritanScreen() {
         </div>
 
         <div className="space-y-2">
-          {NEARBY_STORAGE.map((storage) => (
-            <button
-              key={storage.id}
-              disabled={!storage.available}
-              className="w-full rounded-xl p-3 flex items-center gap-3 text-left transition-all"
-              style={{
-                background: storage.available ? "#F9FAFB" : "#F3F4F6",
-                border: "1px solid rgba(0,0,0,0.08)",
-                opacity: storage.available ? 1 : 0.5,
-              }}
-            >
-              <div
-                className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ background: storage.available ? "rgba(124,58,237,0.1)" : "rgba(0,0,0,0.05)" }}
-              >
-                <Store size={18} style={{ color: storage.available ? "#7C3AED" : "#9CA3AF" }} />
-              </div>
-
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-0.5">
-                  <span className="text-[13px]" style={{ fontWeight: 600, color: "#111827" }}>{storage.name}</span>
-                  <span
-                    className="text-[9px] px-1.5 py-0.5 rounded"
-                    style={{ background: "rgba(124,58,237,0.1)", color: "#7C3AED", fontWeight: 700 }}
+          {NEARBY_STORAGE.map((s) => {
+            const isSelected = selectedStorageId === s.id;
+            return (
+              <div key={s.id}>
+                <button
+                  disabled={!s.available}
+                  onClick={() => {
+                    if (!s.available) return;
+                    setSelectedStorageId(isSelected ? null : s.id);
+                    if (!isSelected) toast.success(`${s.name} 보관소가 선택되었습니다`);
+                  }}
+                  className="w-full rounded-xl p-3 flex items-center gap-3 text-left transition-all"
+                  style={{
+                    background: isSelected ? "rgba(124,58,237,0.07)" : s.available ? "#F9FAFB" : "#F3F4F6",
+                    border: isSelected ? "1px solid rgba(124,58,237,0.35)" : "1px solid rgba(0,0,0,0.08)",
+                    opacity: s.available ? 1 : 0.5,
+                  }}
+                >
+                  <div
+                    className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+                    style={{ background: s.available ? "rgba(124,58,237,0.1)" : "rgba(0,0,0,0.05)" }}
                   >
-                    {storage.type}
-                  </span>
-                </div>
-                <p className="text-[11px] mb-1" style={{ color: "#9CA3AF" }}>{storage.address}</p>
-                <div className="flex items-center gap-1">
-                  <Navigation size={10} style={{ color: "#10B981" }} />
-                  <span className="text-[11px]" style={{ color: "#10B981", fontWeight: 600 }}>{storage.distance}</span>
-                </div>
-              </div>
+                    <Store size={18} style={{ color: s.available ? "#7C3AED" : "#9CA3AF" }} />
+                  </div>
 
-              {storage.available ? (
-                <ChevronRight size={18} style={{ color: "#9CA3AF" }} />
-              ) : (
-                <span className="text-[10px] px-2 py-1 rounded" style={{ background: "rgba(239,68,68,0.1)", color: "#EF4444", fontWeight: 600 }}>
-                  만석
-                </span>
-              )}
-            </button>
-          ))}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-[13px]" style={{ fontWeight: 600, color: "#111827" }}>{s.name}</span>
+                      <span
+                        className="text-[9px] px-1.5 py-0.5 rounded"
+                        style={{ background: "rgba(124,58,237,0.1)", color: "#7C3AED", fontWeight: 700 }}
+                      >
+                        {s.type}
+                      </span>
+                      {isSelected && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ background: "rgba(16,185,129,0.12)", color: "#10B981", fontWeight: 700 }}>
+                          선택됨
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] mb-1" style={{ color: "#9CA3AF" }}>{s.address}</p>
+                    <div className="flex items-center gap-1">
+                      <Navigation size={10} style={{ color: "#10B981" }} />
+                      <span className="text-[11px]" style={{ color: "#10B981", fontWeight: 600 }}>{s.distance}</span>
+                    </div>
+                  </div>
+
+                  {s.available ? (
+                    <ChevronRight size={18} style={{ color: isSelected ? "#7C3AED" : "#9CA3AF" }} />
+                  ) : (
+                    <span className="text-[10px] px-2 py-1 rounded" style={{ background: "rgba(239,68,68,0.1)", color: "#EF4444", fontWeight: 600 }}>
+                      만석
+                    </span>
+                  )}
+                </button>
+
+                {/* 선택된 보관소 — 길찾기 버튼 */}
+                {isSelected && (
+                  <button
+                    onClick={() => window.open(`https://map.kakao.com/link/search/${encodeURIComponent(s.name)}`, "_blank")}
+                    className="w-full mt-1.5 px-4 py-2.5 rounded-xl text-[12px] flex items-center justify-center gap-2"
+                    style={{ background: "linear-gradient(135deg, #7C3AED, #6D28D9)", color: "#ffffff", fontWeight: 700, boxShadow: "0 4px 12px rgba(124,58,237,0.25)" }}
+                  >
+                    <Navigation size={14} />
+                    길찾기
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 

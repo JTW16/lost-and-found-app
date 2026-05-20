@@ -1,4 +1,5 @@
 import { ArrowLeft, Coins, Gift, ShoppingBag, Crown, Zap, ChevronRight, Star, Award } from "lucide-react";
+import { toast } from "sonner";
 import { useState } from "react";
 import { useAppContext } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
@@ -106,9 +107,10 @@ export function PointStoreScreen({ onBack }: PointStoreScreenProps) {
     const success = await spendPoints(uid, itemPoints);
     if (success) {
       setPurchaseSuccess(itemId);
+      toast.success("구매 완료! 🎉", { description: "포인트가 차감되었습니다." });
       setTimeout(() => setPurchaseSuccess(null), 2000);
     } else {
-      alert("포인트가 부족합니다.");
+      toast.error("포인트가 부족합니다.", { description: `보유 포인트: ${userPoints.toLocaleString()} P` });
     }
   };
 
