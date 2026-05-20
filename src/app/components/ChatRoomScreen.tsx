@@ -253,15 +253,15 @@ export function ChatRoomScreen({ onBack, questId, questItem }: ChatRoomScreenPro
                     style={
                       isMe
                         ? {
-                            background: "linear-gradient(135deg, #F59E0B, #D97706)",
-                            borderBottomRightRadius: "6px",
-                          }
+                          background: "linear-gradient(135deg, #F59E0B, #D97706)",
+                          borderBottomRightRadius: "6px",
+                        }
                         : {
-                            background: "#ffffff",
-                            border: "1px solid rgba(0,0,0,0.08)",
-                            borderBottomLeftRadius: "6px",
-                            boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
-                          }
+                          background: "#ffffff",
+                          border: "1px solid rgba(0,0,0,0.08)",
+                          borderBottomLeftRadius: "6px",
+                          boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
+                        }
                     }
                   >
                     <p
@@ -339,13 +339,13 @@ export function ChatRoomScreen({ onBack, questId, questItem }: ChatRoomScreenPro
             style={
               inputValue.trim() === ""
                 ? {
-                    background: "#F3F4F6",
-                    border: "1px solid rgba(0,0,0,0.08)",
-                  }
+                  background: "#F3F4F6",
+                  border: "1px solid rgba(0,0,0,0.08)",
+                }
                 : {
-                    background: "linear-gradient(135deg, #F59E0B, #D97706)",
-                    boxShadow: "0 4px 14px rgba(245,158,11,0.35)",
-                  }
+                  background: "linear-gradient(135deg, #F59E0B, #D97706)",
+                  boxShadow: "0 4px 14px rgba(245,158,11,0.35)",
+                }
             }
           >
             <Send size={18} style={{ color: inputValue.trim() === "" ? "#9CA3AF" : "#1a1200" }} />
@@ -374,3 +374,4 @@ export function ChatRoomScreen({ onBack, questId, questItem }: ChatRoomScreenPro
     </div>
   );
 }
+//주석 주석 김응균
