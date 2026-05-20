@@ -6,6 +6,7 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "../../firebase";
 import { useAuth } from "../context/AuthContext";
 import { useAppContext } from "../context/AppContext";
+import { createNotification } from "../../lib/notifications";
 
 const NEARBY_STORAGE = [
   {
@@ -98,6 +99,13 @@ export function GoodSamaritanScreen() {
         try {
           await updateDoc(doc(db, "users", currentUser.uid), {
             points: increment(earned),
+          });
+          // #8: 포인트 지급 알림
+          await createNotification(currentUser.uid, {
+            type: "reward",
+            title: "포인트 지급 완료! 🎉",
+            description: `습득물 등록 보상 +${earned.toLocaleString()} 포인트가 지급되었습니다.`,
+            read: false,
           });
         } catch (e) {
           console.error("포인트 Firestore 업데이트 실패:", e);

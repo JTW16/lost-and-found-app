@@ -1,7 +1,12 @@
-import { ChevronDown, Search, MessageCircle, Flag, Coins, ShoppingBag, MapPin, Clock, Zap } from "lucide-react";
+import { ChevronDown, Search, MessageCircle, Flag, Coins, ShoppingBag, MapPin, Clock, Zap, X, Send } from "lucide-react";
+import { toast } from "sonner";
 import { useState } from "react";
 import { ChatRoomScreen } from "./ChatRoomScreen";
 import { useAppContext } from "../context/AppContext";
+import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { db } from "../../firebase";
+import { useAuth } from "../context/AuthContext";
+import { createNotification } from "../../lib/notifications";
 
 interface FinderScreenProps {
   onNavigateToPointStore?: () => void;
@@ -9,11 +14,17 @@ interface FinderScreenProps {
 
 export function FinderScreen({ onNavigateToPointStore }: FinderScreenProps = {}) {
   const { quests, premiumQuest, userPoints } = useAppContext();
+  const { currentUser } = useAuth();
   const [selectedRegion, setSelectedRegion] = useState("안양역");
   const [selectedQuestId, setSelectedQuestId] = useState<string | null>(null);
   const [showRegionDropdown, setShowRegionDropdown] = useState(false);
   const [chatQuestId, setChatQuestId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  // #9: 제보 모달
+  const [reportQuestId, setReportQuestId] = useState<string | null>(null);
+  const [reportDesc, setReportDesc] = useState("");
+  const [reportLoc, setReportLoc] = useState("");
+  const [reportSubmitting, setReportSubmitting] = useState(false);
 
   const regions = ["안양역", "범계역", "인덕원역", "평촌역", "관악산역"];
 
@@ -29,6 +40,44 @@ export function FinderScreen({ onNavigateToPointStore }: FinderScreenProps = {})
     q.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     q.location.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // #9: 발견 제보 제출
+  const handleReport = async () => {
+    if (!reportDesc.trim() || !reportLoc.trim()) {
+      toast.error("설명과 위치를 입력해주세요.");
+      return;
+    }
+    setReportSubmitting(true);
+    try {
+      const quest = allQuests.find((q) => q.id === reportQuestId);
+      await addDoc(collection(db, "quest_reports"), {
+        questId: reportQuestId,
+        questTitle: quest?.title ?? "",
+        questOwnerUid: quest?.uid ?? "",
+        reporterUid: currentUser?.uid ?? "anonymous",
+        description: reportDesc,
+        location: reportLoc,
+        status: "pending",
+        createdAt: serverTimestamp(),
+      });
+      if (quest?.uid) {
+        await createNotification(quest.uid, {
+          type: "alert",
+          title: "도서물 발견 제보!",
+          description: `'${quest.title}'에 대한 제보가 도착했습니다. 확인해보세요!`,
+          read: false,
+          urgent: quest.isPremium ?? false,
+        });
+      }
+      toast.success("제보가 접수되었습니다! 분실자에게 알림을 전송합니다.");
+      setReportQuestId(null); setReportDesc(""); setReportLoc("");
+    } catch (e) {
+      toast.error("제보 접수에 실패했습니다.");
+      console.error(e);
+    } finally {
+      setReportSubmitting(false);
+    }
+  };
 
   if (chatQuestId !== null) {
     const questItem = allQuests.find((q) => q.id === chatQuestId);
@@ -223,6 +272,7 @@ export function FinderScreen({ onNavigateToPointStore }: FinderScreenProps = {})
                   </button>
 
                   <button
+                    onClick={() => { setReportQuestId(quest.id); setSelectedQuestId(null); }}
                     className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-[13px]"
                     style={{ background: "linear-gradient(135deg, #F59E0B, #D97706)", color: "#1a1200", fontWeight: 800 }}
                   >
@@ -250,6 +300,35 @@ export function FinderScreen({ onNavigateToPointStore }: FinderScreenProps = {})
       </div>
 
       <div className="h-20" />
+
+      {/* #9: 발견 제보 모달 */}
+      {reportQuestId && (() => {
+        const quest = allQuests.find((q) => q.id === reportQuestId);
+        return (
+          <>
+            <div className="absolute inset-0 z-40" style={{ background: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)" }} onClick={() => setReportQuestId(null)} />
+            <div className="absolute bottom-0 left-0 right-0 z-50 rounded-t-3xl" style={{ background: "#ffffff", boxShadow: "0 -8px 32px rgba(0,0,0,0.15)" }}>
+              <div className="px-5 pt-5 pb-8">
+                <div className="flex items-center justify-between mb-1">
+                  <h3 className="text-[17px]" style={{ fontWeight: 800, color: "#111827" }}>발견 제보하기</h3>
+                  <button onClick={() => setReportQuestId(null)} className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "#F3F4F6" }}>
+                    <X size={16} style={{ color: "#6B7280" }} />
+                  </button>
+                </div>
+                {quest && <p className="text-[12px] mb-4" style={{ color: "#9CA3AF" }}>{quest.title}</p>}
+                <div className="space-y-3 mb-4">
+                  <input type="text" value={reportLoc} onChange={(e) => setReportLoc(e.target.value)} placeholder="발견 위치 또는 형태" className="w-full px-4 py-3 rounded-xl text-[14px] placeholder-gray-400" style={{ background: "#F9FAFB", border: "1px solid rgba(0,0,0,0.1)", outline: "none", color: "#111827" }} />
+                  <textarea value={reportDesc} onChange={(e) => setReportDesc(e.target.value)} placeholder="세부 설명 (상태, 특징 등)" rows={3} className="w-full px-4 py-3 rounded-xl text-[14px] placeholder-gray-400 resize-none" style={{ background: "#F9FAFB", border: "1px solid rgba(0,0,0,0.1)", outline: "none", color: "#111827" }} />
+                </div>
+                <button onClick={handleReport} disabled={reportSubmitting} className="w-full py-3.5 rounded-xl text-[15px] flex items-center justify-center gap-2" style={{ background: reportSubmitting ? "#F3F4F6" : "linear-gradient(135deg, #F59E0B, #D97706)", color: reportSubmitting ? "#9CA3AF" : "#1a1200", fontWeight: 800 }}>
+                  <Send size={16} />
+                  {reportSubmitting ? "제보 중..." : "제보 제출"}
+                </button>
+              </div>
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 }

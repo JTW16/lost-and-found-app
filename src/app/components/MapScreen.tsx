@@ -100,13 +100,12 @@ export function MapScreen({ onNavigateToFinder }: MapScreenProps = {}) {
     addQuestMarkers(map);
   };
 
-  // ── 퀘스트 마커를 지도에 표시 ──
+  // ── 퀘스트 마커를 지도에 표시 (#6: 실제 좌표 우선 사용) ──
   const addQuestMarkers = (map: KakaoMap) => {
-    quests.forEach((quest) => {
-      // TODO: Quest에 lat/lng 필드가 생기면 실제 좌표로 표시
-      // 현재는 안양 지역 임의 좌표에 마커 표시 (데모용)
-      const lat = DEFAULT_CENTER.lat + (Math.random() - 0.5) * 0.03;
-      const lng = DEFAULT_CENTER.lng + (Math.random() - 0.5) * 0.04;
+    quests.forEach((quest, index) => {
+      // lat/lng이 있으면 실제 좌표, 없으면 중심점 기준 고정 오프셋 (랜덤 제거)
+      const lat = quest.lat ?? DEFAULT_CENTER.lat + (index % 5 - 2) * 0.006;
+      const lng = quest.lng ?? DEFAULT_CENTER.lng + (index % 3 - 1) * 0.008;
       const position = new window.kakao.maps.LatLng(lat, lng);
 
       const isUrgent = quest.isPremium;
@@ -151,6 +150,7 @@ export function MapScreen({ onNavigateToFinder }: MapScreenProps = {}) {
       setSelectedQuest((prev) => (prev === id ? null : id));
     };
   };
+
 
   const handleCenterLocation = () => {
     if (!kakaoMapRef.current || !window.kakao?.maps) return;

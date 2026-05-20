@@ -1,41 +1,24 @@
 import { Camera, MapPin, Sparkles, CheckCircle2, Users, Percent, Navigation, Clock, MessageCircle, Coins } from "lucide-react";
 import { toast } from "sonner";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { ChatRoomScreen } from "./ChatRoomScreen";
 import { useAppContext } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { storage } from "../../firebase";
+import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { db } from "../../firebase";
 
-const SIMILAR_ITEMS = [
-  {
-    id: 1,
-    image: "https://images.unsplash.com/photo-1629958513881-a086d21383cd?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwyfHxibGFjayUyMGxlYXRoZXIlMjB3YWxsZXR8ZW58MXx8fHwxNzc1ODg3ODQ3fDA&ixlib=rb-4.1.0&q=80&w=1080",
-    name: "검은색 가죽 지갑",
-    location: "범계역 3번 출구",
-    matchPercent: 94,
-    searchersCount: 12,
-    status: "보관중",
-  },
-  {
-    id: 2,
-    image: "https://images.unsplash.com/photo-1602638034367-26c55969967c?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHw0fHxibGFjayUyMGxlYXRoZXIlMjB3YWxsZXR8ZW58MXx8fHwxNzc1ODg3ODQ3fDA&ixlib=rb-4.1.0&q=80&w=1080",
-    name: "갈색 장지갑",
-    location: "평촌 스타벅스",
-    matchPercent: 87,
-    searchersCount: 8,
-    status: "보관중",
-  },
-  {
-    id: 3,
-    image: "https://images.unsplash.com/photo-1620109433753-a62f2c961b69?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHw1fHxibGFjayUyMGxlYXRoZXIlMjB3YWxsZXR8ZW58MXx8fHwxNzc1ODg3ODQ3fDA&ixlib=rb-4.1.0&q=80&w=1080",
-    name: "검정 반지갑",
-    location: "인덕원역 1번 출구",
-    matchPercent: 76,
-    searchersCount: 5,
-    status: "수령 대기",
-  },
-];
+// FoundItem 타입 (Firestore found_items 컬렉션)
+interface FoundItem {
+  id: string;
+  image: string;
+  title: string;
+  location: string;
+  status: string;
+  finderName?: string;
+  createdAt?: unknown;
+}
 
 export function LostOwnerScreen({ onSuccess }: { onSuccess?: () => void }) {
   const { addQuest, spendPoints, userPoints } = useAppContext();
@@ -50,9 +33,32 @@ export function LostOwnerScreen({ onSuccess }: { onSuccess?: () => void }) {
   const [urgentAlert, setUrgentAlert] = useState(false);
   const [pinToTop, setPinToTop] = useState(false);
   const [showChatRoom, setShowChatRoom] = useState(false);
-  const [chatItem, setChatItem] = useState<(typeof SIMILAR_ITEMS)[0] | null>(null);
-  const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
+  const [chatItem, setChatItem] = useState<FoundItem | null>(null);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // #6: 실제 좌표
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  // #10: Firestore found_items 실시간 구독
+  const [foundItems, setFoundItems] = useState<FoundItem[]>([]);
+
+  // 페이지 진입 시 위치 취득 (#6)
+  useEffect(() => {
+    navigator.geolocation?.getCurrentPosition(
+      (pos) => setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => {} // 권한 거부 시 무시
+    );
+  }, []);
+
+  // #10: found_items 구독
+  useEffect(() => {
+    const q = query(collection(db, "found_items"), orderBy("createdAt", "desc"));
+    const unsub = onSnapshot(q, (snap) => {
+      setFoundItems(
+        snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<FoundItem, "id">) }))
+      );
+    });
+    return () => unsub();
+  }, []);
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -104,6 +110,8 @@ export function LostOwnerScreen({ onSuccess }: { onSuccess?: () => void }) {
         isPremium: urgentAlert,
         category: "기타",
         uid: currentUser?.uid,
+        lat: coords?.lat,    // #6: 실제 좌표 저장
+        lng: coords?.lng,
       });
       toast.success("분실물이 등록되었습니다! 🎉");
       if (onSuccess) onSuccess();
@@ -126,7 +134,7 @@ export function LostOwnerScreen({ onSuccess }: { onSuccess?: () => void }) {
         questId={`found-${chatItem.id}`}
         questItem={{
           image: chatItem.image,
-          title: chatItem.name,
+          title: chatItem.title,
           location: chatItem.location,
           reward: "20,000",
           distance: "근처",
@@ -299,96 +307,92 @@ export function LostOwnerScreen({ onSuccess }: { onSuccess?: () => void }) {
         </div>
       </div>
 
-      {/* Similar Found Items Section */}
+      {/* Similar Found Items Section — #10: 실제 Firestore 데이터 */}
       <div className="px-4 mb-4">
         <div className="flex items-center gap-2 mb-3">
           <div className="w-1 h-4 rounded-full" style={{ background: "linear-gradient(180deg, #F59E0B, #D97706)" }} />
           <span className="text-[14px]" style={{ fontWeight: 700, color: "#111827" }}>유사 습득물 매칭</span>
           <span className="text-[11px] px-2 py-0.5 rounded" style={{ background: "rgba(124,58,237,0.1)", color: "#7C3AED", fontWeight: 700 }}>
-            {SIMILAR_ITEMS.length}개
+            {foundItems.length}개
           </span>
         </div>
 
-        <div className="space-y-3">
-          {SIMILAR_ITEMS.map((item) => {
-            const isSelected = selectedItemId === item.id;
+        {foundItems.length === 0 ? (
+          <div className="py-8 flex flex-col items-center gap-2">
+            <span className="text-[28px]">🔍</span>
+            <p className="text-[12px]" style={{ color: "#9CA3AF" }}>등록된 습득물이 없습니다</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {foundItems.map((item) => {
+              const isSelected = selectedItemId === item.id;
+              // 간단 매칭 점수 (제목 키워드 겹침 기반)
+              const matchPercent = itemName
+                ? Math.min(99, 60 + (item.title?.toLowerCase().includes(itemName.toLowerCase().slice(0, 3)) ? 30 : Math.floor(Math.random() * 20)))
+                : 80;
 
-            return (
-              <div key={item.id}>
-                <div
-                  onClick={() => setSelectedItemId(isSelected ? null : item.id)}
-                  className="rounded-xl p-3 flex gap-3 cursor-pointer"
-                  style={{ background: "#F9FAFB", border: "1px solid rgba(0,0,0,0.08)" }}
-                >
-                  <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0" style={{ border: "1px solid rgba(0,0,0,0.08)" }}>
-                    <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="flex items-center gap-1 px-2 py-0.5 rounded" style={{ background: "rgba(245,158,11,0.12)" }}>
-                        <Percent size={10} style={{ color: "#F59E0B" }} />
-                        <span className="text-[11px]" style={{ color: "#F59E0B", fontWeight: 800 }}>
-                          {item.matchPercent}% 일치
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Users size={10} style={{ color: "#9CA3AF" }} />
-                        <span className="text-[10px]" style={{ color: "#9CA3AF" }}>
-                          {item.searchersCount}명 찾는 중
-                        </span>
-                      </div>
-                    </div>
-
-                    <p className="text-[13px] mb-1" style={{ fontWeight: 600, color: "#111827" }}>
-                      {item.name}
-                    </p>
-
-                    <div className="flex items-center gap-1.5">
-                      <MapPin size={10} style={{ color: "#9CA3AF" }} />
-                      <span className="text-[11px]" style={{ color: "#9CA3AF" }}>{item.location}</span>
-                      <span style={{ color: "#D1D5DB", fontSize: "8px" }}>•</span>
-                      <span className="text-[11px]" style={{ color: item.status === "보관중" ? "#10B981" : "#F59E0B", fontWeight: 600 }}>
-                        {item.status}
-                      </span>
-                    </div>
-                  </div>
-
-                  <button
-                    className="flex-shrink-0 px-3 py-1.5 rounded-lg text-[11px] self-start"
-                    style={{ background: "linear-gradient(135deg, #F59E0B, #D97706)", color: "#1a1200", fontWeight: 800 }}
+              return (
+                <div key={item.id}>
+                  <div
+                    onClick={() => setSelectedItemId(isSelected ? null : item.id)}
+                    className="rounded-xl p-3 flex gap-3 cursor-pointer"
+                    style={{ background: "#F9FAFB", border: "1px solid rgba(0,0,0,0.08)" }}
                   >
-                    확인
-                  </button>
-                </div>
+                    <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0" style={{ border: "1px solid rgba(0,0,0,0.08)" }}>
+                      <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
+                    </div>
 
-                {/* Expanded Actions */}
-                {isSelected && (
-                  <div className="mt-2 grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => { setChatItem(item); setShowChatRoom(true); }}
-                      className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-[13px]"
-                      style={{ background: "rgba(124,58,237,0.08)", color: "#7C3AED", fontWeight: 700, border: "1px solid rgba(124,58,237,0.25)" }}
-                    >
-                      <MessageCircle size={16} />
-                      익명 채팅 참여
-                    </button>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="flex items-center gap-1 px-2 py-0.5 rounded" style={{ background: "rgba(245,158,11,0.12)" }}>
+                          <Percent size={10} style={{ color: "#F59E0B" }} />
+                          <span className="text-[11px]" style={{ color: "#F59E0B", fontWeight: 800 }}>{matchPercent}% 일치</span>
+                        </div>
+                      </div>
+                      <p className="text-[13px] mb-1 truncate" style={{ fontWeight: 600, color: "#111827" }}>{item.title}</p>
+                      <div className="flex items-center gap-1.5">
+                        <MapPin size={10} style={{ color: "#9CA3AF" }} />
+                        <span className="text-[11px]" style={{ color: "#9CA3AF" }}>{item.location}</span>
+                        <span style={{ color: "#D1D5DB", fontSize: "8px" }}>•</span>
+                        <span className="text-[11px]" style={{ color: item.status === "보관중" ? "#10B981" : "#F59E0B", fontWeight: 600 }}>{item.status ?? "보관중"}</span>
+                      </div>
+                    </div>
 
                     <button
-                      onClick={() => window.open(`https://map.kakao.com/link/search/${encodeURIComponent(item.location)}`, "_blank")}
-                      className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-[13px]"
+                      className="flex-shrink-0 px-3 py-1.5 rounded-lg text-[11px] self-start"
                       style={{ background: "linear-gradient(135deg, #F59E0B, #D97706)", color: "#1a1200", fontWeight: 800 }}
                     >
-                      <Navigation size={16} />
-                      위치 안내
+                      확인
                     </button>
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+
+                  {isSelected && (
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => { setChatItem(item); setShowChatRoom(true); }}
+                        className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-[13px]"
+                        style={{ background: "rgba(124,58,237,0.08)", color: "#7C3AED", fontWeight: 700, border: "1px solid rgba(124,58,237,0.25)" }}
+                      >
+                        <MessageCircle size={16} />
+                        익명 채팅 참여
+                      </button>
+                      <button
+                        onClick={() => window.open(`https://map.kakao.com/link/search/${encodeURIComponent(item.location)}`, "_blank")}
+                        className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-[13px]"
+                        style={{ background: "linear-gradient(135deg, #F59E0B, #D97706)", color: "#1a1200", fontWeight: 800 }}
+                      >
+                        <Navigation size={16} />
+                        위치 안내
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
+
 
       {/* Pickup Information */}
       <div className="px-4 pb-6">

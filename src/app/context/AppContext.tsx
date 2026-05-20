@@ -7,8 +7,8 @@ import {
   orderBy,
   serverTimestamp,
   doc,
-  updateDoc,
   increment,
+  runTransaction,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 
@@ -28,15 +28,8 @@ export interface Quest {
   isPremium?: boolean;
   createdAt?: unknown;
   uid?: string;
-}
-
-export interface ChatMessage {
-  id: string;
-  type: "system" | "user" | "me";
-  username?: string;
-  content: string;
-  timestamp: string;
-  createdAt?: unknown;
+  lat?: number;   // #6: 실제 좌표
+  lng?: number;   // #6: 실제 좌표
 }
 
 interface AppContextType {
@@ -46,12 +39,10 @@ interface AppContextType {
   loadingQuests: boolean;
   addQuest: (quest: Omit<Quest, "id" | "rewardShort" | "isNew" | "distance" | "createdAt">) => Promise<void>;
   spendPoints: (uid: string, amount: number) => Promise<boolean>;
-  chatMessages: ChatMessage[];
-  sendMessage: (chatId: string, text: string, username: string) => Promise<void>;
   setUserPoints: (points: number) => void;
 }
 
-// ─── Demo fallback data (보여주기용, Firestore에 데이터 없을 때) ─────────────
+// ─── Demo fallback data (Firestore에 데이터 없을 때) ─────────────────────────
 
 const DEMO_PREMIUM: Quest = {
   id: "demo-premium",
@@ -82,7 +73,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [quests, setQuests] = useState<Quest[]>(DEMO_QUESTS);
   const [premiumQuest, setPremiumQuest] = useState<Quest | null>(DEMO_PREMIUM);
   const [userPoints, setUserPoints] = useState<number>(10000);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [loadingQuests, setLoadingQuests] = useState(true);
 
   // ── Firestore: quests 컬렉션 실시간 구독 ──
@@ -98,7 +88,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const premium = allQuests.find((q) => q.isPremium) ?? null;
       const regular = allQuests.filter((q) => !q.isPremium);
 
-      // Firestore에 데이터가 있으면 대체, 없으면 데모 유지
       if (allQuests.length > 0) {
         setPremiumQuest(premium);
         setQuests(regular);
@@ -126,53 +115,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     await addDoc(collection(db, "quests"), docData);
-  };
 
-  // ── Firestore: 포인트 차감 ──
-  const spendPoints = async (uid: string, amount: number): Promise<boolean> => {
-    if (userPoints >= amount) {
-      // 로컬 상태 즉시 반영
-      setUserPoints((prev) => prev - amount);
-      // Firestore 사용자 문서 업데이트
+    // #8: 퀘스트 등록 알림 생성
+    if (newQuestData.uid) {
       try {
-        await updateDoc(doc(db, "users", uid), {
-          points: increment(-amount),
+        await addDoc(collection(db, "users", newQuestData.uid, "notifications"), {
+          type: "quest",
+          title: "분실물 등록 완료",
+          description: `'${newQuestData.title}' 퀘스트가 등록되었습니다. 헌터들이 찾기 시작했어요!`,
+          read: false,
+          urgent: newQuestData.isPremium ?? false,
+          createdAt: serverTimestamp(),
         });
       } catch (e) {
-        console.error("포인트 차감 실패:", e);
+        console.error("알림 생성 실패:", e);
       }
-      return true;
     }
-    return false;
   };
 
-  // ── Firestore: 채팅 메시지 전송 ──
-  const sendMessage = async (chatId: string, text: string, username: string) => {
-    const newMsg = {
-      content: text,
-      type: "me" as const,
-      username,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      createdAt: serverTimestamp(),
-    };
-
-    // 낙관적 업데이트 (즉시 화면에 표시)
-    setChatMessages((prev) => [
-      ...prev,
-      { ...newMsg, id: String(Date.now()), createdAt: undefined },
-    ]);
-
-    // Firestore에 저장
+  // ── Firestore: 포인트 차감 (runTransaction — #11 Race Condition 방지) ──
+  const spendPoints = async (uid: string, amount: number): Promise<boolean> => {
+    if (userPoints < amount) return false;
     try {
-      await addDoc(collection(db, "chats", chatId, "messages"), newMsg);
+      const userRef = doc(db, "users", uid);
+      await runTransaction(db, async (transaction) => {
+        const userSnap = await transaction.get(userRef);
+        if (!userSnap.exists()) throw new Error("유저 문서 없음");
+        const serverPoints = (userSnap.data().points as number) ?? 0;
+        if (serverPoints < amount) throw new Error("포인트 부족");
+        transaction.update(userRef, { points: increment(-amount) });
+      });
+      // 트랜잭션 성공 후 로컬 즉시 반영
+      setUserPoints((prev) => prev - amount);
+      return true;
     } catch (e) {
-      console.error("메시지 전송 실패:", e);
+      console.error("포인트 차감 실패:", e);
+      return false;
     }
   };
 
   return (
     <AppContext.Provider
-      value={{ quests, premiumQuest, userPoints, loadingQuests, addQuest, spendPoints, chatMessages, sendMessage, setUserPoints }}
+      value={{ quests, premiumQuest, userPoints, loadingQuests, addQuest, spendPoints, setUserPoints }}
     >
       {children}
     </AppContext.Provider>
