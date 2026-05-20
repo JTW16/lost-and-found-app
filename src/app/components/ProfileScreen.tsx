@@ -9,6 +9,7 @@ const ACHIEVEMENTS = [
   { id: 3, icon: "💎", title: "전설의 헌터", desc: "10개 퀘스트 완료", unlocked: false },
   { id: 4, icon: "🔥", title: "연속 달성", desc: "7일 연속 활동", unlocked: true },
 ];
+//git확인용 주석
 
 const RANK_TIERS = [
   { name: "브론즈", min: 0, color: "#cd7f32" },
@@ -47,7 +48,7 @@ export function ProfileScreen() {
       },
       cancel: {
         label: "취소",
-        onClick: () => {},
+        onClick: () => { },
       },
       duration: 5000,
     });
