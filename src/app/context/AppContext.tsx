@@ -118,6 +118,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     // #8: 퀘스트 등록 알림 생성
     if (newQuestData.uid) {
+  // ── Firestore: 포인트 차감 ──
+  const spendPoints = async (uid: string, amount: number): Promise<boolean> => {
+    if (userPoints >= amount) {
+      // 낙관적 업데이트 (즉시 반영)
+      setUserPoints((prev) => prev - amount);
+      // Firestore 사용자 문서 업데이트
       try {
         await addDoc(collection(db, "users", newQuestData.uid, "notifications"), {
           type: "quest",
@@ -129,6 +135,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         });
       } catch (e) {
         console.error("알림 생성 실패:", e);
+        console.error("포인트 차감 실패:", e);
+        // Firestore 실패 시 롤백
+        setUserPoints((prev) => prev + amount);
+        return false;
       }
     }
   };
