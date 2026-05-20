@@ -56,6 +56,7 @@ export function GoodSamaritanScreen() {
   const [pointsEarned, setPointsEarned] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [selectedStorageId, setSelectedStorageId] = useState<number | null>(null);
+  const [authCode, setAuthCode] = useState<string>("");
 
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -80,7 +81,7 @@ export function GoodSamaritanScreen() {
         imageUrl = await getDownloadURL(snapshot.ref);
       }
 
-      await addDoc(collection(db, "found_items"), {
+      const docRef = await addDoc(collection(db, "found_items"), {
         title: (itemName || "습득물") + " 습득",
         location,
         time: time || "현재",
@@ -90,6 +91,11 @@ export function GoodSamaritanScreen() {
         status: "pending",
         createdAt: serverTimestamp(),
       });
+
+      // Firestore doc ID 기반 동적 인증코드 생성
+      const rawId = docRef.id;
+      const code = `FI-${rawId.slice(0, 4).toUpperCase()}-${rawId.slice(4, 8).toUpperCase()}`;
+      setAuthCode(code);
 
       // 포인트 지급 — 로컬 상태 즉시 반영 + Firestore 동기화
       const earned = 5000;
@@ -394,7 +400,7 @@ export function GoodSamaritanScreen() {
               <div className="w-full px-4 py-3 rounded-lg text-center" style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)" }}>
                 <p className="text-[11px] mb-1" style={{ color: "#9CA3AF" }}>인증 코드</p>
                 <p className="text-[18px]" style={{ color: "#F59E0B", fontWeight: 900, letterSpacing: "0.1em" }}>
-                  FI-2406-8372
+                  {authCode}
                 </p>
               </div>
             </div>

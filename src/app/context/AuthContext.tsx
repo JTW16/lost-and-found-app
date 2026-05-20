@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { User, onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 import { auth, db, googleProvider } from "../../firebase";
 import { toast } from "sonner";
 
@@ -61,25 +61,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUserProfile(null);
   };
 
-  // 로그인 상태 감지 & 프로필 불러오기
+  // 로그인 상태 감지 & 프로필 실시간 구독
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    // 프로필 onSnapshot 구독 해제용 참조
+    let profileUnsubscribe: (() => void) | null = null;
+
+    const authUnsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
+
+      // 이전 프로필 구독 정리
+      if (profileUnsubscribe) {
+        profileUnsubscribe();
+        profileUnsubscribe = null;
+      }
 
       if (user) {
         const userRef = doc(db, "users", user.uid);
-        const userSnap = await getDoc(userRef);
-        if (userSnap.exists()) {
-          setUserProfile(userSnap.data() as UserProfile);
-        }
+        // onSnapshot: 포인트/프로필 변경 시 실시간 반영
+        profileUnsubscribe = onSnapshot(userRef, (snap) => {
+          if (snap.exists()) {
+            setUserProfile(snap.data() as UserProfile);
+          }
+          setLoading(false);
+        }, (error) => {
+          console.error("프로필 구독 오류:", error);
+          setLoading(false);
+        });
       } else {
         setUserProfile(null);
+        setLoading(false);
       }
-
-      setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      authUnsubscribe();
+      if (profileUnsubscribe) profileUnsubscribe();
+    };
   }, []);
 
   return (

@@ -189,7 +189,7 @@ export default function App() {
     if (userProfile) {
       setUserPoints(userProfile.points);
     }
-  }, [userProfile]);
+  }, [userProfile, setUserPoints]);
 
 
   // 로딩 중
