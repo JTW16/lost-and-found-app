@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Search, Bell, Home, Map, MessageCircle, User, Plus, MapPin, Zap, ChevronRight, FileSearch, Users2, Package, X } from "lucide-react";
 import { LostOwnerScreen } from "./components/LostOwnerScreen";
 import { FinderScreen } from "./components/FinderScreen";
@@ -9,6 +9,7 @@ import { NotificationScreen } from "./components/NotificationScreen";
 import { SearchScreen } from "./components/SearchScreen";
 import { PointStoreScreen } from "./components/PointStoreScreen";
 import { ChatRoomScreen } from "./components/ChatRoomScreen";
+import { QuestDetailSheet } from "./components/QuestDetailSheet";
 import { useAuth } from "./context/AuthContext";
 import { AuthScreen } from "./screens/AuthScreen";
 import { useAppContext, Quest } from "./context/AppContext";
@@ -175,7 +176,15 @@ export default function App() {
   const [activeNav, setActiveNav] = useState("home");
   const [currentScreen, setCurrentScreen] = useState<Screen>("home");
   const [showActionMenu, setShowActionMenu] = useState(false);
-  const { quests, premiumQuest, userPoints, setUserPoints } = useAppContext();
+  const [selectedQuest, setSelectedQuest] = useState<Quest | null>(null);
+  const { quests, premiumQuest, userPoints, unreadCount, setUserPoints } = useAppContext();
+
+  // Q2: 실시간 시계
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(t);
+  }, []);
 
   /** 화면 전환 + 탭 하이라이트 동기화 */
   const navigate = (screen: Screen) => {
@@ -189,7 +198,29 @@ export default function App() {
     if (userProfile) {
       setUserPoints(userProfile.points);
     }
-  }, [userProfile]);
+  }, [userProfile, setUserPoints]);
+
+  // Q1: 필터 칩 기반 퀘스트 정렬/필터링
+  const filteredQuests = useMemo(() => {
+    let list = [...quests];
+    if (activeFilter === "reward") {
+      list.sort((a, b) => (parseInt(b.reward.replace(/,/g, "")) || 0) - (parseInt(a.reward.replace(/,/g, "")) || 0));
+    } else if (activeFilter === "urgent") {
+      list = list.filter((q) => q.isPremium);
+    } else if (activeFilter === "electronics") {
+      list = list.filter((q) => q.category === "전자기기");
+    } else if (activeFilter === "pets") {
+      list = list.filter((q) => q.category === "반려동물");
+    }
+    return list;
+  }, [quests, activeFilter]);
+
+  // Q3: 오늘 보상 합산
+  const totalReward = useMemo(() => {
+    const sum = [...quests, ...(premiumQuest ? [premiumQuest] : [])]
+      .reduce((acc, q) => acc + (parseInt(q.reward.replace(/,/g, "")) || 0), 0);
+    return sum.toLocaleString();
+  }, [quests, premiumQuest]);
 
 
   // 로딩 중
@@ -229,7 +260,7 @@ export default function App() {
       >
         {/* Status bar */}
         <div className="flex items-center justify-between px-8 pt-4 pb-1 flex-shrink-0">
-          <span className="text-[12px]" style={{ color: "#374151", fontWeight: 600 }}>9:41</span>
+          <span className="text-[12px]" style={{ color: "#374151", fontWeight: 600 }}>{now.getHours()}:{String(now.getMinutes()).padStart(2, "0")}</span>
           <div className="flex items-center gap-1.5">
             <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
               <rect x="0" y="3" width="3" height="9" rx="1" fill="#374151"/>
@@ -281,7 +312,9 @@ export default function App() {
               style={{ background: "#F3F4F6", border: "1px solid rgba(0,0,0,0.07)" }}
             >
               <Bell size={16} style={{ color: "#6B7280" }} />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full" style={{ background: "#EF4444", border: "1.5px solid #ffffff" }} />
+              {unreadCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full" style={{ background: "#EF4444", border: "1.5px solid #ffffff" }} />
+              )}
             </button>
           </div>
         </div>
@@ -298,8 +331,8 @@ export default function App() {
               </div>
               <div className="w-px h-3" style={{ background: "rgba(0,0,0,0.1)" }} />
               <div className="flex items-center gap-1.5">
-                <span className="text-[11px]" style={{ color: "#6B7280" }}>오늘 보상 지급</span>
-                <span className="text-[12px]" style={{ color: "#10B981", fontWeight: 800 }}>1,240,000 KRW</span>
+                <span className="text-[11px]" style={{ color: "#6B7280" }}>등록 보상 총액</span>
+                <span className="text-[12px]" style={{ color: "#10B981", fontWeight: 800 }}>{totalReward} KRW</span>
               </div>
             </div>
 
@@ -351,9 +384,16 @@ export default function App() {
 
               {/* Regular rows container */}
               <div className="mx-4 rounded-2xl overflow-hidden" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.08)", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
-                {quests.map((quest) => (
-                  <RegularQuestRow key={quest.id} quest={quest} onClick={() => navigate("finder")} />
-                ))}
+                {filteredQuests.length === 0 ? (
+                  <div className="py-10 flex flex-col items-center gap-2">
+                    <span className="text-[28px]">🔍</span>
+                    <p className="text-[13px]" style={{ color: "#9CA3AF" }}>해당 조건의 퀘스트가 없습니다</p>
+                  </div>
+                ) : (
+                  filteredQuests.map((quest) => (
+                    <RegularQuestRow key={quest.id} quest={quest} onClick={() => setSelectedQuest(quest)} />
+                  ))
+                )}
               </div>
 
               {/* Bottom padding */}
@@ -418,6 +458,18 @@ export default function App() {
               questItem={undefined}
             />
           </div>
+        )}
+
+        {/* M2: 퀘스트 상세 바텀 시트 (홈 화면에서 카드 탭 시) */}
+        {selectedQuest && (
+          <QuestDetailSheet
+            quest={selectedQuest}
+            onClose={() => setSelectedQuest(null)}
+            onChat={(questId) => {
+              setSelectedQuest(null);
+              navigate("chat");
+            }}
+          />
         )}
 
         {/* ── FAB ── */}

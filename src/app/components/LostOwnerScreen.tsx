@@ -1,11 +1,14 @@
 import { Camera, MapPin, Sparkles, CheckCircle2, Users, Percent, Navigation, Clock, MessageCircle, Coins } from "lucide-react";
 import { toast } from "sonner";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { ChatRoomScreen } from "./ChatRoomScreen";
 import { useAppContext } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { storage } from "../../firebase";
+import { createNotification } from "../../lib/notifications";
+import { compressImage } from "../../lib/imageUtils";
+import { LocationPickerModal } from "./LocationPickerModal";
 
 const SIMILAR_ITEMS = [
   {
@@ -44,6 +47,7 @@ export function LostOwnerScreen({ onSuccess }: { onSuccess?: () => void }) {
 
   const [itemName, setItemName] = useState("");
   const [location, setLocation] = useState("");
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [reward, setReward] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -84,10 +88,11 @@ export function LostOwnerScreen({ onSuccess }: { onSuccess?: () => void }) {
     try {
       let imageUrl = "https://images.unsplash.com/photo-1544816155-12df9643f363?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080";
 
-      // 이미지를 선택한 경우 Firebase Storage에 업로드
+      // M3: 업로드 전 이미지 압축 (1200px / WebP 85%)
       if (imageFile && currentUser) {
-        const storageRef = ref(storage, `quests/${currentUser.uid}/${Date.now()}_${imageFile.name}`);
-        const snapshot = await uploadBytes(storageRef, imageFile);
+        const compressed = await compressImage(imageFile);
+        const storageRef = ref(storage, `quests/${currentUser.uid}/${Date.now()}_${compressed.name}`);
+        const snapshot = await uploadBytes(storageRef, compressed);
         imageUrl = await getDownloadURL(snapshot.ref);
       }
 
@@ -135,6 +140,7 @@ export function LostOwnerScreen({ onSuccess }: { onSuccess?: () => void }) {
     );
   }
 
+
   return (
     <div className="h-full overflow-y-auto" style={{ scrollbarWidth: "none", background: "#ffffff" }}>
       {/* Header */}
@@ -164,20 +170,24 @@ export function LostOwnerScreen({ onSuccess }: { onSuccess?: () => void }) {
             />
           </div>
 
-          <div className="mb-4">
-            <label className="block text-[12px] mb-2" style={{ color: "#6B7280", fontWeight: 600 }}>
+          <div className="mb-6">
+            <label className="block text-[13px] mb-2 px-1" style={{ color: "#4B5563", fontWeight: 700 }}>
               분실 장소
             </label>
-            <div className="relative">
-              <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#9CA3AF" }} />
-              <input
-                type="text"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                placeholder="예: 안양역 2번 출구"
-                className="w-full pl-10 pr-4 py-3 rounded-xl text-[14px] placeholder-gray-400"
-                style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.1)", outline: "none", color: "#111827" }}
-              />
+            <div
+              onClick={() => setShowLocationPicker(true)}
+              className="w-full px-4 py-3.5 rounded-xl flex items-center justify-between cursor-pointer transition-colors"
+              style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.1)" }}
+            >
+              <div className="flex items-center gap-2 overflow-hidden">
+                <MapPin size={18} style={{ color: location ? "#10B981" : "#9CA3AF" }} />
+                <span className="text-[14.5px] truncate" style={{ color: location ? "#111827" : "#9CA3AF" }}>
+                  {location || "지도에서 분실 장소 선택"}
+                </span>
+              </div>
+              <span className="text-[12px] font-bold px-3 py-1.5 rounded-lg" style={{ background: "rgba(16,185,129,0.1)", color: "#10B981" }}>
+                지도 열기
+              </span>
             </div>
           </div>
 
@@ -442,6 +452,16 @@ export function LostOwnerScreen({ onSuccess }: { onSuccess?: () => void }) {
       </div>
 
       <div className="h-20" />
+      {/* 지도 위치 선택 모달 */}
+      {showLocationPicker && (
+        <LocationPickerModal
+          onClose={() => setShowLocationPicker(false)}
+          onSelect={(selectedLoc) => {
+            setLocation(selectedLoc);
+            setShowLocationPicker(false);
+          }}
+        />
+      )}
     </div>
   );
 }

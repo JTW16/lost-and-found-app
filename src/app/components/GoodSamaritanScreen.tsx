@@ -6,6 +6,7 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "../../firebase";
 import { useAuth } from "../context/AuthContext";
 import { useAppContext } from "../context/AppContext";
+import { compressImage } from "../../lib/imageUtils";
 
 const NEARBY_STORAGE = [
   {
@@ -65,7 +66,14 @@ export function GoodSamaritanScreen() {
   };
 
   const handleGenerateQR = async () => {
-    if (!location) {
+    // 키오스크가 선택되었고 location이 비어있으면 키오스크 이름으로 대체
+    let finalLocation = location;
+    if (!finalLocation && selectedStorageId) {
+      const storage = NEARBY_STORAGE.find(s => s.id === selectedStorageId);
+      if (storage) finalLocation = storage.name;
+    }
+
+    if (!finalLocation) {
       toast.error("습득 장소를 입력해주세요.");
       return;
     }
@@ -73,19 +81,20 @@ export function GoodSamaritanScreen() {
     try {
       let imageUrl = "https://images.unsplash.com/photo-1629958513881-a086d21383cd?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080";
 
-      // 이미지 Firebase Storage 업로드
+      // M3: 업로드 전 이미지 압축 (1200px / WebP 85%)
       if (photoFile && currentUser) {
-        const storageRef = ref(storage, `found/${currentUser.uid}/${Date.now()}_${photoFile.name}`);
-        const snapshot = await uploadBytes(storageRef, photoFile);
+        const compressed = await compressImage(photoFile);
+        const storageRef = ref(storage, `found/${currentUser.uid}/${Date.now()}_${compressed.name}`);
+        const snapshot = await uploadBytes(storageRef, compressed);
         imageUrl = await getDownloadURL(snapshot.ref);
       }
 
       await addDoc(collection(db, "found_items"), {
         title: (itemName || "습득물") + " 습득",
-        location,
+        location: finalLocation,
         time: time || "현재",
         image: imageUrl,
-        uid: currentUser?.uid,
+        uid: currentUser?.uid || "anonymous",
         finderName: userProfile?.displayName ?? "익명",
         status: "pending",
         createdAt: serverTimestamp(),
