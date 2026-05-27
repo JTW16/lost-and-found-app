@@ -49,6 +49,8 @@ export function LostOwnerScreen({ onSuccess }: { onSuccess?: () => void }) {
   const [location, setLocation] = useState("");
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [reward, setReward] = useState("");
+  const [category, setCategory] = useState("기타");
+  const [description, setDescription] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [urgentAlert, setUrgentAlert] = useState(false);
@@ -107,7 +109,8 @@ export function LostOwnerScreen({ onSuccess }: { onSuccess?: () => void }) {
         reward: rewardFormatted,
         image: imageUrl,
         isPremium: urgentAlert,
-        category: "기타",
+        category,
+        description,
         uid: currentUser?.uid,
       });
       toast.success("분실물이 등록되었습니다! 🎉");
@@ -168,6 +171,30 @@ export function LostOwnerScreen({ onSuccess }: { onSuccess?: () => void }) {
               className="w-full px-4 py-3 rounded-xl text-[14px] placeholder-gray-400"
               style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.1)", outline: "none", color: "#111827" }}
             />
+          </div>
+
+          {/* 카테고리 선택 */}
+          <div className="mb-4">
+            <label className="block text-[12px] mb-2" style={{ color: "#6B7280", fontWeight: 600 }}>
+              물건 카테고리
+            </label>
+            <div className="flex gap-2 flex-wrap pb-1">
+              {["전자기기", "지갑/가방", "반려동물", "귀금속/시계", "기타"].map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setCategory(cat)}
+                  className="flex-shrink-0 px-3 py-1.5 rounded-full text-[12px] transition-colors"
+                  style={{
+                    background: category === cat ? "rgba(16,185,129,0.15)" : "#ffffff",
+                    color: category === cat ? "#059669" : "#6B7280",
+                    fontWeight: category === cat ? 700 : 500,
+                    border: category === cat ? "1px solid rgba(16,185,129,0.3)" : "1px solid rgba(0,0,0,0.1)"
+                  }}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="mb-6">
@@ -238,6 +265,20 @@ export function LostOwnerScreen({ onSuccess }: { onSuccess?: () => void }) {
                 </div>
               </div>
             )}
+          </div>
+
+          {/* 상세 설명 */}
+          <div className="mb-4">
+            <label className="block text-[12px] mb-2" style={{ color: "#6B7280", fontWeight: 600 }}>
+              상세 설명
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="분실물의 특징이나 잃어버린 상황을 자세히 적어주세요."
+              className="w-full p-3 rounded-xl text-[13px] placeholder-gray-400 resize-none h-24"
+              style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.1)", outline: "none", color: "#111827" }}
+            />
           </div>
 
           {/* 보상금 입력 */}

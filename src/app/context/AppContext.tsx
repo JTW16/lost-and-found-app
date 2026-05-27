@@ -11,6 +11,7 @@ import {
   increment,
   runTransaction,
   where,
+  deleteDoc,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import { useAuth } from "./AuthContext";
@@ -58,6 +59,8 @@ interface AppContextType {
   chatMessages: ChatMessage[];
   sendMessage: (chatId: string, text: string, username: string) => Promise<void>;
   setUserPoints: (points: number) => void;
+  updateQuest: (questId: string, data: Partial<Quest>) => Promise<void>;
+  deleteQuest: (questId: string) => Promise<void>;
 }
 
 // ─── Demo fallback data (보여주기용, Firestore에 데이터 없을 때) ─────────────
@@ -162,6 +165,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await addDoc(collection(db, "quests"), docData);
   };
 
+  // ── Firestore: 퀘스트(분실물) 수정 ──
+  const updateQuest = async (questId: string, data: Partial<Quest>) => {
+    await updateDoc(doc(db, "quests", questId), data);
+  };
+
+  // ── Firestore: 퀘스트(분실물) 삭제 ──
+  const deleteQuest = async (questId: string) => {
+    await deleteDoc(doc(db, "quests", questId));
+  };
+
   // ── Firestore: 포인트 차감 (runTransaction으로 race condition 방지) ──
   const spendPoints = async (uid: string, amount: number): Promise<boolean> => {
     try {
@@ -220,7 +233,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider
-      value={{ quests, premiumQuest, userPoints, unreadCount, loadingQuests, addQuest, spendPoints, completeQuest, chatMessages, sendMessage, setUserPoints }}
+      value={{ quests, premiumQuest, userPoints, unreadCount, loadingQuests, addQuest, spendPoints, completeQuest, chatMessages, sendMessage, setUserPoints, updateQuest, deleteQuest }}
     >
       {children}
     </AppContext.Provider>

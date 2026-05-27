@@ -1,5 +1,6 @@
-import { User, Award, Coins, TrendingUp, Settings, LogOut, ChevronRight, Shield, Star, Target, Crown } from "lucide-react";
+import { User, Award, Coins, TrendingUp, Settings, LogOut, ChevronRight, Shield, Star, Target, Crown, Edit2, Trash2, X, Check } from "lucide-react";
 import { toast } from "sonner";
+import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useAppContext } from "../context/AppContext";
 
@@ -20,7 +21,60 @@ const RANK_TIERS = [
 
 export function ProfileScreen() {
   const { currentUser, userProfile, logout } = useAuth();
-  const { quests, userPoints } = useAppContext();
+  const { quests, userPoints, updateQuest, deleteQuest } = useAppContext();
+
+  const [editingQuestId, setEditingQuestId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editReward, setEditReward] = useState("");
+  const [editLocation, setEditLocation] = useState("");
+  const [editCategory, setEditCategory] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+
+  const startEdit = (q: any) => {
+    setEditingQuestId(q.id);
+    setEditTitle(q.title);
+    setEditReward(q.reward?.replace(/,/g, "") || "");
+    setEditLocation(q.location || "");
+    setEditCategory(q.category || "기타");
+    setEditDescription(q.description || "");
+  };
+
+  const handleUpdate = async () => {
+    if (!editingQuestId) return;
+    try {
+      const rewardFormatted = editReward ? Number(editReward).toLocaleString() : "0";
+      const rewardShort = Number(editReward) > 0 ? `${Math.floor(Number(editReward) / 1000)}k` : "0k";
+      await updateQuest(editingQuestId, {
+        title: editTitle,
+        reward: rewardFormatted,
+        rewardShort,
+        location: editLocation,
+        category: editCategory,
+        description: editDescription,
+      });
+      toast.success("퀘스트가 수정되었습니다.");
+      setEditingQuestId(null);
+    } catch (e) {
+      toast.error("수정에 실패했습니다.");
+    }
+  };
+
+  const handleDelete = (id: string) => {
+    toast("정말 삭제하시겠습니까?", {
+      action: {
+        label: "삭제",
+        onClick: async () => {
+          try {
+            await deleteQuest(id);
+            toast.success("삭제되었습니다.");
+          } catch (e) {
+            toast.error("삭제에 실패했습니다.");
+          }
+        },
+      },
+      cancel: { label: "취소", onClick: () => {} },
+    });
+  };
 
   // 내가 등록한 퀘스트 목록
   const myQuests = quests.filter((q) => q.uid === currentUser?.uid);
@@ -199,19 +253,123 @@ export function ProfileScreen() {
             {myQuests.map((quest) => (
               <div
                 key={quest.id}
-                className="flex items-center gap-3 p-3 rounded-xl"
+                className="flex flex-col gap-2 p-3 rounded-xl"
                 style={{ background: "#F9FAFB", border: "1px solid rgba(0,0,0,0.07)" }}
               >
-                <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0">
-                  <img src={quest.image} alt={quest.title} className="w-full h-full object-cover" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] truncate" style={{ fontWeight: 600, color: "#111827" }}>{quest.title}</p>
-                  <p className="text-[11px]" style={{ color: "#9CA3AF" }}>{quest.location}</p>
-                </div>
-                <span className="text-[13px]" style={{ color: "#F59E0B", fontWeight: 700 }}>
-                  💰 {quest.rewardShort}
-                </span>
+                {editingQuestId === quest.id ? (
+                  <div className="flex flex-col gap-3">
+                    <div>
+                      <label className="text-[11px] font-bold text-gray-500 mb-1 block">퀘스트 제목</label>
+                      <input
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg text-[13px]"
+                        style={{ border: "1px solid rgba(0,0,0,0.1)", outline: "none" }}
+                        placeholder="퀘스트 제목"
+                      />
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <label className="text-[11px] font-bold text-gray-500 mb-1 block">카테고리</label>
+                        <select
+                          value={editCategory}
+                          onChange={(e) => setEditCategory(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg text-[13px]"
+                          style={{ border: "1px solid rgba(0,0,0,0.1)", outline: "none", background: "white" }}
+                        >
+                          {["전자기기", "지갑/가방", "반려동물", "귀금속/시계", "기타"].map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex-1">
+                        <label className="text-[11px] font-bold text-gray-500 mb-1 block">보상금 (숫자)</label>
+                        <input
+                          type="number"
+                          value={editReward}
+                          onChange={(e) => setEditReward(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg text-[13px]"
+                          style={{ border: "1px solid rgba(0,0,0,0.1)", outline: "none" }}
+                          placeholder="보상금"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-gray-500 mb-1 block">분실 장소</label>
+                      <input
+                        value={editLocation}
+                        onChange={(e) => setEditLocation(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg text-[13px]"
+                        style={{ border: "1px solid rgba(0,0,0,0.1)", outline: "none" }}
+                        placeholder="분실 장소 (예: 안양역)"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-gray-500 mb-1 block">상세 설명</label>
+                      <textarea
+                        value={editDescription}
+                        onChange={(e) => setEditDescription(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg text-[13px] resize-none h-16"
+                        style={{ border: "1px solid rgba(0,0,0,0.1)", outline: "none" }}
+                        placeholder="상세 설명을 적어주세요"
+                      />
+                    </div>
+
+                    <div className="flex justify-end gap-2 mt-1">
+                      <button
+                        onClick={() => setEditingQuestId(null)}
+                        className="px-3 py-1.5 rounded-lg text-[12px] flex items-center gap-1"
+                        style={{ background: "#F3F4F6", color: "#4B5563" }}
+                      >
+                        <X size={14} /> 취소
+                      </button>
+                      <button
+                        onClick={handleUpdate}
+                        className="px-3 py-1.5 rounded-lg text-[12px] flex items-center gap-1"
+                        style={{ background: "#10B981", color: "white" }}
+                      >
+                        <Check size={14} /> 저장
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 relative">
+                      <img src={quest.image} alt={quest.title} className="w-full h-full object-cover" />
+                      {quest.status === "completed" && (
+                        <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                          <span className="text-white text-[10px] font-bold">완료됨</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] truncate" style={{ fontWeight: 600, color: "#111827" }}>{quest.title}</p>
+                      <p className="text-[11px]" style={{ color: "#9CA3AF" }}>{quest.location}</p>
+                      <span className="text-[13px]" style={{ color: "#F59E0B", fontWeight: 700 }}>
+                        💰 {quest.rewardShort}
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <button
+                        onClick={() => startEdit(quest)}
+                        className="w-7 h-7 flex items-center justify-center rounded-md"
+                        style={{ background: "rgba(124,58,237,0.1)", color: "#7C3AED" }}
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(quest.id)}
+                        className="w-7 h-7 flex items-center justify-center rounded-md"
+                        style={{ background: "rgba(239,68,68,0.1)", color: "#EF4444" }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>

@@ -116,48 +116,79 @@ export function MapScreen({ onNavigateToFinder }: MapScreenProps = {}) {
   // ── 퀘스트 마커를 지도에 표시 (M5/M7: 실좌표 + 실시간 갱신) ──
   const addQuestMarkers = (map: KakaoMap) => {
     quests.forEach((quest, index) => {
-      // lat/lng가 있으면 실제 좌표, 없으면 고정 오프셋 (랜덤 제거)
-      const lat = quest.lat ?? DEFAULT_CENTER.lat + (index % 5 - 2) * 0.006;
-      const lng = quest.lng ?? DEFAULT_CENTER.lng + (index % 3 - 1) * 0.008;
-      const position = new window.kakao.maps.LatLng(lat, lng);
+      const createMarker = (lat: number, lng: number) => {
+        const position = new window.kakao.maps.LatLng(lat, lng);
+        const isUrgent = quest.isPremium;
+        const markerColor = isUrgent ? "#F59E0B" : "#7C3AED";
 
-      const isUrgent = quest.isPremium;
-      const markerColor = isUrgent ? "#F59E0B" : "#7C3AED";
-
-      const overlayContent = `
-        <div style="
-          position: relative;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          cursor: pointer;
-        " onclick="window.__selectMarker('${quest.id}')">
+        const overlayContent = `
           <div style="
-            width: 40px; height: 40px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, ${markerColor}, ${markerColor}cc);
-            border: 3px solid white;
-            box-shadow: 0 4px 16px ${markerColor}66;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 18px;
-          ">
-            ${isUrgent ? "⚡" : "📍"}
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            cursor: pointer;
+          " onclick="window.__selectMarker('${quest.id}')">
+            <div style="
+              width: 40px; height: 40px;
+              border-radius: 50%;
+              background: linear-gradient(135deg, ${markerColor}, ${markerColor}cc);
+              border: 3px solid white;
+              box-shadow: 0 4px 16px ${markerColor}66;
+              display: flex; align-items: center; justify-content: center;
+              font-size: 18px;
+            ">
+              ${isUrgent ? "⚡" : "📍"}
+            </div>
+            <div style="
+              width: 2px; height: 10px;
+              background: ${markerColor};
+            "></div>
           </div>
-          <div style="
-            width: 2px; height: 10px;
-            background: ${markerColor};
-          "></div>
-        </div>
-      `;
+        `;
 
-      const overlay = new window.kakao.maps.CustomOverlay({
-        position,
-        content: overlayContent,
-        yAnchor: 1,
-        map,
-      });
-      // M5: 참조 보관
-      overlaysRef.current.push(overlay);
+        const overlay = new window.kakao.maps.CustomOverlay({
+          position,
+          content: overlayContent,
+          yAnchor: 1,
+          map,
+        });
+        // M5: 참조 보관
+        overlaysRef.current.push(overlay);
+      };
+
+      if (quest.lat && quest.lng) {
+        createMarker(quest.lat, quest.lng);
+      } else if (window.kakao?.maps?.services) {
+        // 실제 좌표가 없으면 카카오맵 서비스 API를 사용하여 위치 검색
+        const geocoder = new window.kakao.maps.services.Geocoder();
+        geocoder.addressSearch(quest.location, (result: any[], status: string) => {
+          if (status === window.kakao.maps.services.Status.OK && result.length > 0) {
+            createMarker(parseFloat(result[0].y), parseFloat(result[0].x));
+          } else {
+            // 주소 검색 실패 시 키워드(장소) 검색으로 재시도
+            const ps = new window.kakao.maps.services.Places();
+            // 키워드 검색 시 정확도를 위해 지역명('안양')을 덧붙임
+            ps.keywordSearch(quest.location + " 안양", (pResult: any[], pStatus: string) => {
+              if (pStatus === window.kakao.maps.services.Status.OK && pResult.length > 0) {
+                createMarker(parseFloat(pResult[0].y), parseFloat(pResult[0].x));
+              } else {
+                // 그래도 못찾으면 임의의 위치
+                createMarker(
+                  DEFAULT_CENTER.lat + (index % 5 - 2) * 0.006,
+                  DEFAULT_CENTER.lng + (index % 3 - 1) * 0.008
+                );
+              }
+            });
+          }
+        });
+      } else {
+        // API 서비스 로드 안 된 경우 
+        createMarker(
+          DEFAULT_CENTER.lat + (index % 5 - 2) * 0.006,
+          DEFAULT_CENTER.lng + (index % 3 - 1) * 0.008
+        );
+      }
     });
 
     // 전역 콜백 등록 (마커 클릭 시)

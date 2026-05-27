@@ -1,8 +1,8 @@
 import { createRoot } from "react-dom/client";
 import { Toaster } from "sonner";
-import App from "./app/App.tsx";
-import { AppProvider } from "./app/context/AppContext.tsx";
-import { AuthProvider } from "./app/context/AuthContext.tsx";
+import App from "./app/App";
+import { AppProvider } from "./app/context/AppContext";
+import { AuthProvider } from "./app/context/AuthContext";
 import "./styles/index.css";
 
 createRoot(document.getElementById("root")!).render(
