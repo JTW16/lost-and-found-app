@@ -2,6 +2,7 @@ import { ChevronDown, Search, MessageCircle, Flag, Coins, ShoppingBag, MapPin, C
 import { useState } from "react";
 import { ChatRoomScreen } from "./ChatRoomScreen";
 import { useAppContext } from "../context/AppContext";
+import { QuestReportModal } from "./QuestReportModal";
 
 interface FinderScreenProps {
   onNavigateToPointStore?: () => void;
@@ -13,6 +14,7 @@ export function FinderScreen({ onNavigateToPointStore }: FinderScreenProps = {})
   const [selectedQuestId, setSelectedQuestId] = useState<string | null>(null);
   const [showRegionDropdown, setShowRegionDropdown] = useState(false);
   const [chatQuestId, setChatQuestId] = useState<string | null>(null);
+  const [reportQuestId, setReportQuestId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
   const regions = ["안양역", "범계역", "인덕원역", "평촌역", "관악산역"];
@@ -48,7 +50,7 @@ export function FinderScreen({ onNavigateToPointStore }: FinderScreenProps = {})
   }
 
   return (
-    <div className="h-full overflow-y-auto" style={{ scrollbarWidth: "none", background: "#ffffff" }}>
+    <div className="relative h-full overflow-y-auto" style={{ scrollbarWidth: "none", background: "#ffffff" }}>
       {/* Header with Points */}
       <div className="px-5 pt-4 pb-3">
         <div className="flex items-center justify-between mb-3">
@@ -223,6 +225,7 @@ export function FinderScreen({ onNavigateToPointStore }: FinderScreenProps = {})
                   </button>
 
                   <button
+                    onClick={() => setReportQuestId(quest.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-[13px]"
                     style={{ background: "linear-gradient(135deg, #F59E0B, #D97706)", color: "#1a1200", fontWeight: 800 }}
                   >
@@ -250,6 +253,14 @@ export function FinderScreen({ onNavigateToPointStore }: FinderScreenProps = {})
       </div>
 
       <div className="h-20" />
+
+      {/* 발견 제보 모달 */}
+      {reportQuestId && (
+        <QuestReportModal
+          questId={reportQuestId}
+          onClose={() => setReportQuestId(null)}
+        />
+      )}
     </div>
   );
 }

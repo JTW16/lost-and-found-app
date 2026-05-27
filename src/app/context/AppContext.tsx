@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import React, { createContext, useContext, useEffect, useState, useMemo, ReactNode } from "react";
 import {
   collection,
   onSnapshot,
@@ -9,8 +9,11 @@ import {
   doc,
   updateDoc,
   increment,
+  runTransaction,
+  where,
 } from "firebase/firestore";
 import { db } from "../../firebase";
+import { useAuth } from "./AuthContext";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -28,6 +31,10 @@ export interface Quest {
   isPremium?: boolean;
   createdAt?: unknown;
   uid?: string;
+  lat?: number;
+  lng?: number;
+  status?: "open" | "completed" | "closed";
+  description?: string;
 }
 
 export interface ChatMessage {
@@ -43,9 +50,11 @@ interface AppContextType {
   quests: Quest[];
   premiumQuest: Quest | null;
   userPoints: number;
+  unreadCount: number;
   loadingQuests: boolean;
   addQuest: (quest: Omit<Quest, "id" | "rewardShort" | "isNew" | "distance" | "createdAt">) => Promise<void>;
   spendPoints: (uid: string, amount: number) => Promise<boolean>;
+  completeQuest: (questId: string, hunterUid: string, rewardAmount: number) => Promise<void>;
   chatMessages: ChatMessage[];
   sendMessage: (chatId: string, text: string, username: string) => Promise<void>;
   setUserPoints: (points: number) => void;
@@ -65,13 +74,14 @@ const DEMO_PREMIUM: Quest = {
   category: "전자기기",
   isPremium: true,
   isNew: true,
+  status: "open",
 };
 
 const DEMO_QUESTS: Quest[] = [
-  { id: "demo-1", image: "https://images.unsplash.com/photo-1646848842285-d4c14f43781e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080", reward: "20,000", rewardShort: "20k", title: "검은 가죽 지갑 분실", location: "범계역", distance: "650m", isNew: true },
-  { id: "demo-2", image: "https://images.unsplash.com/photo-1773093758897-0becd0af36b1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080", reward: "30,000", rewardShort: "30k", title: "따릉이 번호판 & 자물쇠 분실", location: "평촌중앙공원", distance: "1.2km", isNew: false },
-  { id: "demo-3", image: "https://images.unsplash.com/photo-1768081529866-a5ec754fe14c?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080", reward: "50,000", rewardShort: "50k", title: "소니 FE 24-70mm 렌즈 분실", location: "인덕원역 근처", distance: "2.1km", isNew: true },
-  { id: "demo-4", image: "https://images.unsplash.com/photo-1550894832-407b1aa5a3af?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080", reward: "80,000", rewardShort: "80k", title: "포메라니안 '호두' 실종 (흰색·수컷)", location: "학의동 일원", distance: "3.4km", isNew: false },
+  { id: "demo-1", image: "https://images.unsplash.com/photo-1646848842285-d4c14f43781e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080", reward: "20,000", rewardShort: "20k", title: "검은 가죽 지갑 분실", location: "범계역", distance: "650m", isNew: true, status: "open" },
+  { id: "demo-2", image: "https://images.unsplash.com/photo-1773093758897-0becd0af36b1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080", reward: "30,000", rewardShort: "30k", title: "따릉이 번호판 & 자물쇠 분실", location: "평촌중앙공원", distance: "1.2km", isNew: false, status: "open" },
+  { id: "demo-3", image: "https://images.unsplash.com/photo-1768081529866-a5ec754fe14c?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080", reward: "50,000", rewardShort: "50k", title: "소니 FE 24-70mm 렌즈 분실", location: "인덕원역 근처", distance: "2.1km", isNew: true, status: "open" },
+  { id: "demo-4", image: "https://images.unsplash.com/photo-1550894832-407b1aa5a3af?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080", reward: "80,000", rewardShort: "80k", title: "포메라니안 '호두' 실종 (흰색·수컷)", location: "학의동 일원", distance: "3.4km", isNew: false, status: "open" },
 ];
 
 // ─── Context ─────────────────────────────────────────────────────────────────
@@ -79,26 +89,33 @@ const DEMO_QUESTS: Quest[] = [
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
+  const { currentUser } = useAuth();
   const [quests, setQuests] = useState<Quest[]>(DEMO_QUESTS);
   const [premiumQuest, setPremiumQuest] = useState<Quest | null>(DEMO_PREMIUM);
   const [userPoints, setUserPoints] = useState<number>(10000);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [loadingQuests, setLoadingQuests] = useState(true);
+  const [unreadCount, setUnreadCount] = useState(0);
 
-  // ── Firestore: quests 컬렉션 실시간 구독 ──
+  // ── Firestore: quests 컬렉션 실시간 구독 (open 상태만) ──
   useEffect(() => {
-    const q = query(collection(db, "quests"), orderBy("createdAt", "desc"));
+    const q = query(
+      collection(db, "quests"),
+      orderBy("createdAt", "desc")
+    );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const allQuests: Quest[] = snapshot.docs.map((docSnap) => ({
+      let allQuests: Quest[] = snapshot.docs.map((docSnap) => ({
         id: docSnap.id,
         ...(docSnap.data() as Omit<Quest, "id">),
       }));
 
+      // 클라이언트 측 필터링 (복합 인덱스 오류 방지)
+      allQuests = allQuests.filter(q => q.status === "open" || !q.status);
+
       const premium = allQuests.find((q) => q.isPremium) ?? null;
       const regular = allQuests.filter((q) => !q.isPremium);
 
-      // Firestore에 데이터가 있으면 대체, 없으면 데모 유지
       if (allQuests.length > 0) {
         setPremiumQuest(premium);
         setQuests(regular);
@@ -112,6 +129,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => unsubscribe();
   }, []);
 
+  // ── Firestore: 읽지 않은 알림 카운트 구독 ──
+  useEffect(() => {
+    if (!currentUser) {
+      setUnreadCount(0);
+      return;
+    }
+    const q = query(
+      collection(db, "users", currentUser.uid, "notifications"),
+      where("read", "==", false)
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      setUnreadCount(snap.size);
+    }, () => setUnreadCount(0));
+    return () => unsub();
+  }, [currentUser]);
+
   // ── Firestore: 퀘스트(분실물) 등록 ──
   const addQuest = async (newQuestData: Omit<Quest, "id" | "rewardShort" | "isNew" | "distance" | "createdAt">) => {
     const parsedReward = parseInt(newQuestData.reward.replace(/,/g, ""), 10) || 0;
@@ -122,28 +155,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
       rewardShort,
       distance: "0m",
       isNew: true,
+      status: "open",
       createdAt: serverTimestamp(),
     };
 
     await addDoc(collection(db, "quests"), docData);
   };
 
-  // ── Firestore: 포인트 차감 ──
+  // ── Firestore: 포인트 차감 (runTransaction으로 race condition 방지) ──
   const spendPoints = async (uid: string, amount: number): Promise<boolean> => {
-    if (userPoints >= amount) {
-      // 로컬 상태 즉시 반영
-      setUserPoints((prev) => prev - amount);
-      // Firestore 사용자 문서 업데이트
-      try {
-        await updateDoc(doc(db, "users", uid), {
-          points: increment(-amount),
-        });
-      } catch (e) {
-        console.error("포인트 차감 실패:", e);
-      }
-      return true;
+    try {
+      const userRef = doc(db, "users", uid);
+      let success = false;
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(userRef);
+        const currentPts = (snap.data()?.points as number) ?? 0;
+        if (currentPts < amount) return;
+        tx.update(userRef, { points: increment(-amount) });
+        success = true;
+      });
+      if (success) setUserPoints((prev) => prev - amount);
+      return success;
+    } catch (e) {
+      console.error("포인트 차감 실패:", e);
+      return false;
     }
-    return false;
+  };
+
+  // ── Firestore: 퀘스트 완료 처리 + 헌터 포인트 지급 ──
+  const completeQuest = async (questId: string, hunterUid: string, rewardAmount: number) => {
+    // 퀘스트 status → completed
+    await updateDoc(doc(db, "quests", questId), { status: "completed" });
+    // 헌터 포인트 지급
+    await updateDoc(doc(db, "users", hunterUid), { points: increment(rewardAmount) });
+    // 헌터에게 알림 생성
+    await addDoc(collection(db, "users", hunterUid, "notifications"), {
+      type: "reward",
+      title: "보상 포인트 지급! 🎉",
+      description: `분실물 찾기 완료 보상 +${rewardAmount.toLocaleString()} 포인트가 지급되었습니다.`,
+      read: false,
+      createdAt: serverTimestamp(),
+    });
   };
 
   // ── Firestore: 채팅 메시지 전송 ──
@@ -155,14 +207,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       createdAt: serverTimestamp(),
     };
-
-    // 낙관적 업데이트 (즉시 화면에 표시)
     setChatMessages((prev) => [
       ...prev,
       { ...newMsg, id: String(Date.now()), createdAt: undefined },
     ]);
-
-    // Firestore에 저장
     try {
       await addDoc(collection(db, "chats", chatId, "messages"), newMsg);
     } catch (e) {
@@ -172,7 +220,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider
-      value={{ quests, premiumQuest, userPoints, loadingQuests, addQuest, spendPoints, chatMessages, sendMessage, setUserPoints }}
+      value={{ quests, premiumQuest, userPoints, unreadCount, loadingQuests, addQuest, spendPoints, completeQuest, chatMessages, sendMessage, setUserPoints }}
     >
       {children}
     </AppContext.Provider>

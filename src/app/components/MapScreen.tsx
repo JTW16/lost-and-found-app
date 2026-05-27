@@ -15,14 +15,15 @@ declare global {
         LatLng: new (lat: number, lng: number) => KakaoLatLng;
         Marker: new (options: object) => KakaoMarker;
         CustomOverlay: new (options: object) => KakaoOverlay;
-        event: { addListener: (target: unknown, type: string, handler: () => void) => void };
+        event: { addListener: (target: unknown, type: string, handler: (mouseEvent: any) => void) => void };
+        services?: any;
       };
     };
   }
 }
 interface KakaoMap { setCenter: (latlng: KakaoLatLng) => void; }
 interface KakaoLatLng { getLat: () => number; getLng: () => number; }
-interface KakaoMarker { setMap: (map: KakaoMap | null) => void; }
+interface KakaoMarker { setMap: (map: KakaoMap | null) => void; setPosition: (latlng: KakaoLatLng) => void; }
 interface KakaoOverlay { setMap: (map: KakaoMap | null) => void; }
 
 const FILTER_OPTIONS = [
@@ -49,6 +50,8 @@ export function MapScreen({ onNavigateToFinder }: MapScreenProps = {}) {
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState(false);
   const [layers, setLayers] = useState({ quests: true, storage: false, traffic: false });
+  // M5: 오버레이 참조 목록 (재생성 시 제거용)
+  const overlaysRef = useRef<KakaoOverlay[]>([]);
 
   const toggleLayer = (key: keyof typeof layers) => {
     setLayers((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -69,7 +72,7 @@ export function MapScreen({ onNavigateToFinder }: MapScreenProps = {}) {
     }
 
     const script = document.createElement("script");
-    script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_MAP_API_KEY}&autoload=false`;
+    script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_MAP_API_KEY}&autoload=false&libraries=services`;
     script.onload = () => {
       window.kakao.maps.load(() => {
         setMapReady(true);
@@ -86,6 +89,16 @@ export function MapScreen({ onNavigateToFinder }: MapScreenProps = {}) {
     }
   }, [mapReady]);
 
+  // M5: quests 변경 시 마커 재생성 (지도가 준비된 경우)
+  useEffect(() => {
+    if (kakaoMapRef.current) {
+      // 기존 오버레이 모두 제거
+      overlaysRef.current.forEach((o) => o.setMap(null));
+      overlaysRef.current = [];
+      addQuestMarkers(kakaoMapRef.current);
+    }
+  }, [quests]);
+
   const initMap = () => {
     if (!mapContainerRef.current || !window.kakao?.maps) return;
 
@@ -100,13 +113,12 @@ export function MapScreen({ onNavigateToFinder }: MapScreenProps = {}) {
     addQuestMarkers(map);
   };
 
-  // ── 퀘스트 마커를 지도에 표시 ──
+  // ── 퀘스트 마커를 지도에 표시 (M5/M7: 실좌표 + 실시간 갱신) ──
   const addQuestMarkers = (map: KakaoMap) => {
-    quests.forEach((quest) => {
-      // TODO: Quest에 lat/lng 필드가 생기면 실제 좌표로 표시
-      // 현재는 안양 지역 임의 좌표에 마커 표시 (데모용)
-      const lat = DEFAULT_CENTER.lat + (Math.random() - 0.5) * 0.03;
-      const lng = DEFAULT_CENTER.lng + (Math.random() - 0.5) * 0.04;
+    quests.forEach((quest, index) => {
+      // lat/lng가 있으면 실제 좌표, 없으면 고정 오프셋 (랜덤 제거)
+      const lat = quest.lat ?? DEFAULT_CENTER.lat + (index % 5 - 2) * 0.006;
+      const lng = quest.lng ?? DEFAULT_CENTER.lng + (index % 3 - 1) * 0.008;
       const position = new window.kakao.maps.LatLng(lat, lng);
 
       const isUrgent = quest.isPremium;
@@ -138,12 +150,14 @@ export function MapScreen({ onNavigateToFinder }: MapScreenProps = {}) {
         </div>
       `;
 
-      new window.kakao.maps.CustomOverlay({
+      const overlay = new window.kakao.maps.CustomOverlay({
         position,
         content: overlayContent,
         yAnchor: 1,
         map,
       });
+      // M5: 참조 보관
+      overlaysRef.current.push(overlay);
     });
 
     // 전역 콜백 등록 (마커 클릭 시)
