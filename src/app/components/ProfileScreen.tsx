@@ -1,7 +1,11 @@
-import { User, Award, Coins, TrendingUp, Settings, LogOut, ChevronRight, Shield, Star, Target, Crown } from "lucide-react";
+import { User, Award, Coins, TrendingUp, Settings, LogOut, ChevronRight, Shield, Star, Target, Crown, Edit2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../context/AuthContext";
-import { useAppContext } from "../context/AppContext";
+import { useAppContext, Quest } from "../context/AppContext";
+import { useState, useEffect } from "react";
+import { collection, query, where, getDocs, doc, deleteDoc } from "firebase/firestore";
+import { db } from "../../firebase";
+import { EditQuestModal } from "./EditQuestModal";
 
 const ACHIEVEMENTS = [
   { id: 1, icon: "🏆", title: "첫 퀘스트", desc: "첫 번째 분실물 발견", unlocked: true },
@@ -21,9 +25,38 @@ const RANK_TIERS = [
 export function ProfileScreen() {
   const { currentUser, userProfile, logout } = useAuth();
   const { quests, userPoints } = useAppContext();
+  const [successRate, setSuccessRate] = useState<number | null>(null);
 
   // 내가 등록한 퀘스트 목록
   const myQuests = quests.filter((q) => q.uid === currentUser?.uid);
+  
+  const [editingQuest, setEditingQuest] = useState<Quest | null>(null);
+
+  const handleDeleteQuest = async (questId: string) => {
+    if (confirm("정말로 이 퀘스트를 삭제하시겠습니까?")) {
+      try {
+        await deleteDoc(doc(db, "quests", questId));
+        toast.success("퀘스트가 삭제되었습니다.");
+      } catch (e) {
+        console.error(e);
+        toast.error("삭제에 실패했습니다.");
+      }
+    }
+  };
+
+  // 실제 성공률 계산: found_items 중 나의 uid의 completed 비율
+  useEffect(() => {
+    if (!currentUser) return;
+    (async () => {
+      const [totalSnap, completedSnap] = await Promise.all([
+        getDocs(query(collection(db, "found_items"), where("uid", "==", currentUser.uid))),
+        getDocs(query(collection(db, "found_items"), where("uid", "==", currentUser.uid), where("status", "==", "completed"))),
+      ]);
+      if (totalSnap.size > 0) {
+        setSuccessRate(Math.round((completedSnap.size / totalSnap.size) * 100));
+      }
+    })();
+  }, [currentUser]);
 
   // 등급 계산
   const currentTier =
@@ -38,6 +71,7 @@ export function ProfileScreen() {
   const displayName = userProfile?.displayName ?? currentUser?.displayName ?? "익명 사용자";
   const photoURL = userProfile?.photoURL ?? currentUser?.photoURL ?? "";
   const email = userProfile?.email ?? currentUser?.email ?? "";
+  const rating = (userProfile as unknown as Record<string, unknown>)?.rating as number | undefined;
 
   const handleLogout = () => {
     toast("로그아웃 하시겠습니까?", {
@@ -105,12 +139,14 @@ export function ProfileScreen() {
                   {currentTier.name}
                 </span>
               </div>
-              <div className="flex items-center gap-1">
-                <Star size={12} style={{ color: "#F59E0B" }} />
-                <span className="text-[11px]" style={{ color: "#6B7280" }}>
-                  평점 4.8
-                </span>
-              </div>
+              {rating !== undefined && (
+                <div className="flex items-center gap-1">
+                  <Star size={12} style={{ color: "#F59E0B" }} />
+                  <span className="text-[11px]" style={{ color: "#6B7280" }}>
+                    평점 {rating.toFixed(1)}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -176,7 +212,7 @@ export function ProfileScreen() {
               <TrendingUp size={16} style={{ color: "#10B981" }} />
             </div>
             <p className="text-[16px] mb-0.5" style={{ fontWeight: 800, letterSpacing: "-0.3px", color: "#111827" }}>
-              92%
+              {successRate !== null ? `${successRate}%` : "-"}
             </p>
             <p className="text-[10px]" style={{ color: "#9CA3AF" }}>성공률</p>
           </div>
@@ -209,9 +245,25 @@ export function ProfileScreen() {
                   <p className="text-[13px] truncate" style={{ fontWeight: 600, color: "#111827" }}>{quest.title}</p>
                   <p className="text-[11px]" style={{ color: "#9CA3AF" }}>{quest.location}</p>
                 </div>
-                <span className="text-[13px]" style={{ color: "#F59E0B", fontWeight: 700 }}>
-                  💰 {quest.rewardShort}
-                </span>
+                <div className="flex flex-col items-end gap-1">
+                  <span className="text-[13px]" style={{ color: "#F59E0B", fontWeight: 700 }}>
+                    💰 {quest.rewardShort}
+                  </span>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <button 
+                      onClick={() => setEditingQuest(quest)}
+                      className="p-1.5 rounded bg-gray-100 text-gray-500 hover:text-gray-700"
+                    >
+                      <Edit2 size={12} />
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteQuest(quest.id)}
+                      className="p-1.5 rounded bg-red-50 text-red-400 hover:text-red-600"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
@@ -284,6 +336,14 @@ export function ProfileScreen() {
       </div>
 
       <div className="h-20" />
+
+      {/* 퀘스트 수정 모달 */}
+      {editingQuest && (
+        <EditQuestModal
+          quest={editingQuest}
+          onClose={() => setEditingQuest(null)}
+        />
+      )}
     </div>
   );
 }

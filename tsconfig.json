@@ -11,6 +11,8 @@
         "jsx": "react-jsx",
         "strict": true,
         "skipLibCheck": true,
+        "allowImportingTsExtensions": true,
+        "noEmit": true,
         "types": [
             "vite/client"
         ]
